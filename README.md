@@ -132,7 +132,7 @@ ledger-backend-go/
 └── go.mod
 ```
 
-## Environment Variables
+## Environment Variabless
 
 | Variable | Default | Deskripsi |
 |----------|---------|-----------|
@@ -144,7 +144,7 @@ ledger-backend-go/
 | DB_SSLMODE | disable | SSL mode |
 | JWT_SECRET | (wajib) | Secret key untuk JWT |
 | JWT_EXPIRY_HOURS | 24 | Masa berlaku token (jam) |
-| PORT | 8080 | Port server |
+| PORT | 8080 | Port server | 
 
 ## Testing
 
