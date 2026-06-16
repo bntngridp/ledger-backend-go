@@ -146,6 +146,29 @@ ledger-backend-go/
 | JWT_EXPIRY_HOURS | 24 | Masa berlaku token (jam) |
 | PORT | 8080 | Port server | 
 
+## API Documentation
+
+Dua format dokumentasi tersedia:
+
+### Swagger UI (interaktif)
+
+```
+http://localhost:8080/swagger/index.html
+```
+
+Klik **Authorize** 🔒 → masukkan `Bearer <token>` (dari login). Tiap endpoint bisa di-test langsung dari UI.
+
+### Postman Collection
+
+Import file-file di folder `postman/`:
+
+| File | Tipe |
+|------|------|
+| `postman/ledger-backend-go.postman_collection.json` | Collection |
+| `postman/ledger-backend-go.postman_environment.json` | Environment |
+
+Detail lengkap di [`postman/README.md`](postman/README.md). Token auto-saved dari response login, jadi tidak perlu copas manual.
+
 ## Testing
 
 ```bash

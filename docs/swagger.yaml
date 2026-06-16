@@ -1,0 +1,324 @@
+basePath: /
+definitions:
+  domain.ErrorResponse:
+    properties:
+      message:
+        type: string
+      status:
+        type: integer
+    type: object
+  domain.LoginRequest:
+    properties:
+      email:
+        type: string
+      password:
+        type: string
+    required:
+    - email
+    - password
+    type: object
+  domain.LoginResponse:
+    properties:
+      expires_in:
+        type: integer
+      token:
+        type: string
+    type: object
+  domain.RegisterRequest:
+    properties:
+      email:
+        type: string
+      password:
+        minLength: 6
+        type: string
+      username:
+        type: string
+    required:
+    - email
+    - password
+    - username
+    type: object
+  domain.RegisterResponse:
+    properties:
+      balance:
+        type: integer
+      email:
+        type: string
+      user_id:
+        type: string
+      username:
+        type: string
+      wallet_id:
+        type: string
+    type: object
+  domain.SuccessResponse:
+    properties:
+      data: {}
+      message:
+        type: string
+      status:
+        type: integer
+    type: object
+  domain.TopUpRequest:
+    properties:
+      amount:
+        type: integer
+      notes:
+        type: string
+    required:
+    - amount
+    type: object
+  domain.TopUpResponse:
+    properties:
+      amount:
+        type: integer
+      new_balance:
+        type: integer
+      transaction_id:
+        type: string
+      wallet_id:
+        type: string
+    type: object
+  domain.TransactionHistoryItem:
+    properties:
+      amount:
+        type: integer
+      created_at:
+        type: string
+      destination_wallet_id:
+        type: string
+      source_wallet_id:
+        type: string
+      status:
+        type: string
+      transaction_id:
+        type: string
+      transaction_notes:
+        type: string
+      type:
+        type: string
+    type: object
+  domain.TransferRequest:
+    properties:
+      amount:
+        type: integer
+      destination_user_id:
+        type: string
+      notes:
+        type: string
+    required:
+    - amount
+    - destination_user_id
+    type: object
+host: localhost:8080
+info:
+  contact:
+    email: bintangridwan30@gmail.com
+    name: Bintang Ridwan Pribadi
+  description: |-
+    E-Wallet REST API with user auth, top-up, transfer, and transaction history.
+    Built with Go, Gin, GORM, PostgreSQL, JWT, and bcrypt.
+  title: Ledger Backend API
+  version: "1.0"
+paths:
+  /auth/login:
+    post:
+      consumes:
+      - application/json
+      description: Authenticates a user and returns a JWT token valid for 24 hours.
+      parameters:
+      - description: Login payload
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/domain.LoginRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Login successful
+          schema:
+            allOf:
+            - $ref: '#/definitions/domain.SuccessResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/domain.LoginResponse'
+              type: object
+        "400":
+          description: Invalid request body
+          schema:
+            $ref: '#/definitions/domain.ErrorResponse'
+        "401":
+          description: Invalid email or password
+          schema:
+            $ref: '#/definitions/domain.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/domain.ErrorResponse'
+      summary: Login user
+      tags:
+      - auth
+  /auth/register:
+    post:
+      consumes:
+      - application/json
+      description: Creates a new user account and an associated wallet with balance
+        0 in a single atomic transaction.
+      parameters:
+      - description: Registration payload
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/domain.RegisterRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: User registered successfully
+          schema:
+            allOf:
+            - $ref: '#/definitions/domain.SuccessResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/domain.RegisterResponse'
+              type: object
+        "400":
+          description: Invalid request body
+          schema:
+            $ref: '#/definitions/domain.ErrorResponse'
+        "409":
+          description: Email or username already taken
+          schema:
+            $ref: '#/definitions/domain.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/domain.ErrorResponse'
+      summary: Register a new user
+      tags:
+      - auth
+  /topup:
+    post:
+      consumes:
+      - application/json
+      description: Adds the specified amount to the authenticated user's wallet balance.
+        Records a transaction with type 'topup'.
+      parameters:
+      - description: Top-up payload
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/domain.TopUpRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Top-up successful
+          schema:
+            allOf:
+            - $ref: '#/definitions/domain.SuccessResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/domain.TopUpResponse'
+              type: object
+        "400":
+          description: Invalid request, amount must be greater than 0, or wallet not
+            found
+          schema:
+            $ref: '#/definitions/domain.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/domain.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/domain.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Top-up wallet balance
+      tags:
+      - wallet
+  /transactions:
+    get:
+      description: Returns the authenticated user's transaction history (incoming
+        and outgoing), ordered by most recent first.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Transaction history retrieved
+          schema:
+            allOf:
+            - $ref: '#/definitions/domain.SuccessResponse'
+            - properties:
+                data:
+                  items:
+                    $ref: '#/definitions/domain.TransactionHistoryItem'
+                  type: array
+              type: object
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/domain.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/domain.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Get transaction history
+      tags:
+      - wallet
+  /transfer:
+    post:
+      consumes:
+      - application/json
+      description: Transfers a specified amount from the authenticated user to another
+        user. Uses pessimistic locking (SELECT ... FOR UPDATE) to prevent race conditions.
+      parameters:
+      - description: Transfer payload
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/domain.TransferRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Transfer successful
+          schema:
+            $ref: '#/definitions/domain.SuccessResponse'
+        "400":
+          description: Invalid request, insufficient balance, or self-transfer
+          schema:
+            $ref: '#/definitions/domain.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/domain.ErrorResponse'
+        "404":
+          description: Wallet not found
+          schema:
+            $ref: '#/definitions/domain.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/domain.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Transfer money to another user
+      tags:
+      - wallet
+securityDefinitions:
+  BearerAuth:
+    description: Type "Bearer {token}" to authenticate.
+    in: header
+    name: Authorization
+    type: apiKey
+swagger: "2.0"

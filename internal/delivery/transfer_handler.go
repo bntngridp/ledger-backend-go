@@ -14,10 +14,26 @@ type TransferHandler struct {
 	transferUC usecase.TransferUsecase
 }
 
+// NewTransferHandler godoc
+// @Description Constructs TransferHandler with transfer usecase.
 func NewTransferHandler(transferUC usecase.TransferUsecase) *TransferHandler {
 	return &TransferHandler{transferUC: transferUC}
 }
 
+// Transfer godoc
+// @Summary      Transfer money to another user
+// @Description  Transfers a specified amount from the authenticated user to another user. Uses pessimistic locking (SELECT ... FOR UPDATE) to prevent race conditions.
+// @Tags         wallet
+// @Accept       json
+// @Produce      json
+// @Security     BearerAuth
+// @Param        request body domain.TransferRequest true "Transfer payload"
+// @Success      200 {object} domain.SuccessResponse "Transfer successful"
+// @Failure      400 {object} domain.ErrorResponse "Invalid request, insufficient balance, or self-transfer"
+// @Failure      401 {object} domain.ErrorResponse "Unauthorized"
+// @Failure      404 {object} domain.ErrorResponse "Wallet not found"
+// @Failure      500 {object} domain.ErrorResponse "Internal server error"
+// @Router       /transfer [post]
 func (h *TransferHandler) Transfer(c *gin.Context) {
 	var req domain.TransferRequest
 	if err := c.ShouldBindJSON(&req); err != nil {

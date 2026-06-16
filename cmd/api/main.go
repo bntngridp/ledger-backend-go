@@ -1,5 +1,21 @@
 package main
 
+// @title           Ledger Backend API
+// @version         1.0
+// @description     E-Wallet REST API with user auth, top-up, transfer, and transaction history.
+// @description     Built with Go, Gin, GORM, PostgreSQL, JWT, and bcrypt.
+
+// @contact.name   Bintang Ridwan Pribadi
+// @contact.email  bintangridwan30@gmail.com
+
+// @host      localhost:8080
+// @BasePath  /
+
+// @securityDefinitions.apikey BearerAuth
+// @in header
+// @name Authorization
+// @description Type "Bearer {token}" to authenticate.
+
 import (
 	"log"
 	"net/http"
@@ -13,6 +29,10 @@ import (
 	"github.com/bntngridp/ledger-backend-go/pkg/middleware"
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
+	swaggerFiles "github.com/swaggo/files"
+	ginSwagger "github.com/swaggo/gin-swagger"
+
+	_ "github.com/bntngridp/ledger-backend-go/docs"
 )
 
 func getEnv(key, fallback string) string {
@@ -71,6 +91,14 @@ func main() {
 
 	r := gin.Default()
 
+	r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
+	r.GET("/", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{
+			"message": "Ledger Backend API",
+			"docs":    "/swagger/index.html",
+		})
+	})
+
 	api := r.Group("/api/v1")
 	{
 		auth := api.Group("/auth")
@@ -94,6 +122,7 @@ func main() {
 	})
 
 	log.Printf("server starting on port %s", port)
+	log.Printf("swagger docs: http://localhost:%s/swagger/index.html", port)
 	if err := r.Run(":" + port); err != nil {
 		log.Fatalf("server failed: %v", err)
 	}

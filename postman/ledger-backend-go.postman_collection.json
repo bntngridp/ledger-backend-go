@@ -1,0 +1,331 @@
+{
+  "info": {
+    "_postman_id": "ledger-backend-go-2026",
+    "name": "Ledger Backend Go",
+    "description": "E-Wallet REST API collection with auto token handling and dummy data.\n\nSetup:\n1. Ensure PostgreSQL is running (`docker compose up -d`) and `go run ./cmd/api` is active on port 8080.\n2. Run requests in order: Register budi, Register andi, Login budi, Login andi, Topup, Transfer, History.\n3. JWT tokens are auto-saved to environment variables by login requests.\n4. Transfer and history endpoints auto-use the saved token via Bearer auth.\n\nDummy data: budi@mail.com / andi@mail.com (password: secret123)",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "1. Auth",
+      "item": [
+        {
+          "name": "Register budi",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"budi\",\n  \"email\": \"budi@mail.com\",\n  \"password\": \"secret123\"\n}"
+            },
+            "url": {"raw": "{{base_url}}/api/v1/auth/register", "host": ["{{base_url}}"], "path": ["api", "v1", "auth", "register"]}
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  const json = pm.response.json();",
+                  "  pm.environment.set('budi_user_id', json.data.user_id);",
+                  "  pm.environment.set('budi_wallet_id', json.data.wallet_id);",
+                  "  console.log('Budi User ID:', json.data.user_id);",
+                  "  console.log('Budi Wallet ID:', json.data.wallet_id);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Register andi",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"andi\",\n  \"email\": \"andi@mail.com\",\n  \"password\": \"secret123\"\n}"
+            },
+            "url": {"raw": "{{base_url}}/api/v1/auth/register", "host": ["{{base_url}}"], "path": ["api", "v1", "auth", "register"]}
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) {",
+                  "  const json = pm.response.json();",
+                  "  pm.environment.set('andi_user_id', json.data.user_id);",
+                  "  pm.environment.set('andi_wallet_id', json.data.wallet_id);",
+                  "  console.log('Andi User ID:', json.data.user_id);",
+                  "  console.log('Andi Wallet ID:', json.data.wallet_id);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login budi (saves token automatically)",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"budi@mail.com\",\n  \"password\": \"secret123\"\n}"
+            },
+            "url": {"raw": "{{base_url}}/api/v1/auth/login", "host": ["{{base_url}}"], "path": ["api", "v1", "auth", "login"]}
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  const json = pm.response.json();",
+                  "  pm.environment.set('budi_token', json.data.token);",
+                  "  console.log('Budi token saved');",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login andi (saves token automatically)",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"andi@mail.com\",\n  \"password\": \"secret123\"\n}"
+            },
+            "url": {"raw": "{{base_url}}/api/v1/auth/login", "host": ["{{base_url}}"], "path": ["api", "v1", "auth", "login"]}
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  const json = pm.response.json();",
+                  "  pm.environment.set('andi_token', json.data.token);",
+                  "  console.log('Andi token saved');",
+                  "}"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "2. Wallet (Budi)",
+      "auth": {
+        "type": "bearer",
+        "bearer": [{"key": "token", "value": "{{budi_token}}"}]
+      },
+      "item": [
+        {
+          "name": "TopUp 100000",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": 100000,\n  \"notes\": \"top up awal dari dummy data\"\n}"
+            },
+            "url": {"raw": "{{base_url}}/api/v1/topup", "host": ["{{base_url}}"], "path": ["api", "v1", "topup"]}
+          }
+        },
+        {
+          "name": "TopUp 50000 (lagi)",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": 50000,\n  \"notes\": \"top up kedua\"\n}"
+            },
+            "url": {"raw": "{{base_url}}/api/v1/topup", "host": ["{{base_url}}"], "path": ["api", "v1", "topup"]}
+          }
+        },
+        {
+          "name": "Transfer 30000 to andi",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"destination_user_id\": \"{{andi_user_id}}\",\n  \"amount\": 30000,\n  \"notes\": \"bayar makan siang\"\n}"
+            },
+            "url": {"raw": "{{base_url}}/api/v1/transfer", "host": ["{{base_url}}"], "path": ["api", "v1", "transfer"]}
+          }
+        },
+        {
+          "name": "Transfer 10000 to andi",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"destination_user_id\": \"{{andi_user_id}}\",\n  \"amount\": 10000,\n  \"notes\": \"bayar kopi\"\n}"
+            },
+            "url": {"raw": "{{base_url}}/api/v1/transfer", "host": ["{{base_url}}"], "path": ["api", "v1", "transfer"]}
+          }
+        },
+        {
+          "name": "Get transaction history",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {"raw": "{{base_url}}/api/v1/transactions", "host": ["{{base_url}}"], "path": ["api", "v1", "transactions"]}
+          }
+        },
+        {
+          "name": "Transfer (insufficient balance) - expects 400",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"destination_user_id\": \"{{andi_user_id}}\",\n  \"amount\": 999999999,\n  \"notes\": \"test insufficient\"\n}"
+            },
+            "url": {"raw": "{{base_url}}/api/v1/transfer", "host": ["{{base_url}}"], "path": ["api", "v1", "transfer"]}
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Wallet (Andi)",
+      "auth": {
+        "type": "bearer",
+        "bearer": [{"key": "token", "value": "{{andi_token}}"}]
+      },
+      "item": [
+        {
+          "name": "TopUp 200000 (andi)",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": 200000,\n  \"notes\": \"top up andi\"\n}"
+            },
+            "url": {"raw": "{{base_url}}/api/v1/topup", "host": ["{{base_url}}"], "path": ["api", "v1", "topup"]}
+          }
+        },
+        {
+          "name": "Get transaction history (andi)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {"raw": "{{base_url}}/api/v1/transactions", "host": ["{{base_url}}"], "path": ["api", "v1", "transactions"]}
+          }
+        },
+        {
+          "name": "Transfer 5000 to budi",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"destination_user_id\": \"{{budi_user_id}}\",\n  \"amount\": 5000,\n  \"notes\": \"bales budi\"\n}"
+            },
+            "url": {"raw": "{{base_url}}/api/v1/transfer", "host": ["{{base_url}}"], "path": ["api", "v1", "transfer"]}
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Negative tests",
+      "item": [
+        {
+          "name": "Register duplicate email - expects 409",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"budi2\",\n  \"email\": \"budi@mail.com\",\n  \"password\": \"secret123\"\n}"
+            },
+            "url": {"raw": "{{base_url}}/api/v1/auth/register", "host": ["{{base_url}}"], "path": ["api", "v1", "auth", "register"]}
+          }
+        },
+        {
+          "name": "Login wrong password - expects 401",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"budi@mail.com\",\n  \"password\": \"wrongpassword\"\n}"
+            },
+            "url": {"raw": "{{base_url}}/api/v1/auth/login", "host": ["{{base_url}}"], "path": ["api", "v1", "auth", "login"]}
+          }
+        },
+        {
+          "name": "Topup without token - expects 401",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": 1000,\n  \"notes\": \"no token\"\n}"
+            },
+            "url": {"raw": "{{base_url}}/api/v1/topup", "host": ["{{base_url}}"], "path": ["api", "v1", "topup"]}
+          }
+        },
+        {
+          "name": "Topup zero amount - expects 400",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "auth": {
+              "type": "bearer",
+              "bearer": [{"key": "token", "value": "{{budi_token}}"}]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": 0,\n  \"notes\": \"invalid\"\n}"
+            },
+            "url": {"raw": "{{base_url}}/api/v1/topup", "host": ["{{base_url}}"], "path": ["api", "v1", "topup"]}
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. Health",
+      "item": [
+        {
+          "name": "Ping (with budi token)",
+          "request": {
+            "method": "GET",
+            "header": [{"key": "Authorization", "value": "Bearer {{budi_token}}"}],
+            "url": {"raw": "{{base_url}}/ping", "host": ["{{base_url}}"], "path": ["ping"]}
+          }
+        },
+        {
+          "name": "Ping (no token) - expects 401",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {"raw": "{{base_url}}/ping", "host": ["{{base_url}}"], "path": ["ping"]}
+          }
+        },
+        {
+          "name": "Swagger UI (HTML)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {"raw": "{{base_url}}/swagger/index.html", "host": ["{{base_url}}"], "path": ["swagger", "index.html"]}
+          }
+        }
+      ]
+    }
+  ]
+}

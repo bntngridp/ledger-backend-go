@@ -14,10 +14,25 @@ type WalletHandler struct {
 	walletUC usecase.WalletUsecase
 }
 
+// NewWalletHandler godoc
+// @Description Constructs WalletHandler with wallet usecase.
 func NewWalletHandler(walletUC usecase.WalletUsecase) *WalletHandler {
 	return &WalletHandler{walletUC: walletUC}
 }
 
+// TopUp godoc
+// @Summary      Top-up wallet balance
+// @Description  Adds the specified amount to the authenticated user's wallet balance. Records a transaction with type 'topup'.
+// @Tags         wallet
+// @Accept       json
+// @Produce      json
+// @Security     BearerAuth
+// @Param        request body domain.TopUpRequest true "Top-up payload"
+// @Success      200 {object} domain.SuccessResponse{data=domain.TopUpResponse} "Top-up successful"
+// @Failure      400 {object} domain.ErrorResponse "Invalid request, amount must be greater than 0, or wallet not found"
+// @Failure      401 {object} domain.ErrorResponse "Unauthorized"
+// @Failure      500 {object} domain.ErrorResponse "Internal server error"
+// @Router       /topup [post]
 func (h *WalletHandler) TopUp(c *gin.Context) {
 	var req domain.TopUpRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -70,6 +85,16 @@ func (h *WalletHandler) TopUp(c *gin.Context) {
 	})
 }
 
+// GetTransactionHistory godoc
+// @Summary      Get transaction history
+// @Description  Returns the authenticated user's transaction history (incoming and outgoing), ordered by most recent first.
+// @Tags         wallet
+// @Produce      json
+// @Security     BearerAuth
+// @Success      200 {object} domain.SuccessResponse{data=[]domain.TransactionHistoryItem} "Transaction history retrieved"
+// @Failure      401 {object} domain.ErrorResponse "Unauthorized"
+// @Failure      500 {object} domain.ErrorResponse "Internal server error"
+// @Router       /transactions [get]
 func (h *WalletHandler) GetTransactionHistory(c *gin.Context) {
 	userIDStr, exists := c.Get("user_id")
 	if !exists {
