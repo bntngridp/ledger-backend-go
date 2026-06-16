@@ -42,3 +42,38 @@ func (m *MockTransactionRepository) GetTransactionsByWalletID(walletID uuid.UUID
 	}
 	return args.Get(0).([]domain.Transaction), args.Error(1)
 }
+
+type MockUserRepository struct {
+	mock.Mock
+}
+
+func (m *MockUserRepository) GetUserByEmail(email string) (*domain.User, error) {
+	args := m.Called(email)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*domain.User), args.Error(1)
+}
+
+func (m *MockUserRepository) GetUserByID(id uuid.UUID) (*domain.User, error) {
+	args := m.Called(id)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*domain.User), args.Error(1)
+}
+
+func (m *MockUserRepository) CheckEmailExists(email string) (bool, error) {
+	args := m.Called(email)
+	return args.Bool(0), args.Error(1)
+}
+
+func (m *MockUserRepository) CheckUsernameExists(username string) (bool, error) {
+	args := m.Called(username)
+	return args.Bool(0), args.Error(1)
+}
+
+func (m *MockUserRepository) CreateUserWithWallet(user *domain.User, wallet *domain.Wallet) error {
+	args := m.Called(user, wallet)
+	return args.Error(0)
+}
