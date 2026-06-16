@@ -1,5 +1,7 @@
 # Ledger Backend Go
 
+[![Go CI](https://github.com/bntngridp/ledger-backend-go/actions/workflows/go-ci.yml/badge.svg)](https://github.com/bntngridp/ledger-backend-go/actions/workflows/go-ci.yml)
+
 Backend API untuk sistem e-wallet sederhana. Dibangun dengan Go, Gin, GORM, dan PostgreSQL.
 
 ## Fitur
