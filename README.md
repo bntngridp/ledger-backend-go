@@ -1,16 +1,36 @@
-# Ledger Backend
+# Ledger Backend (Hybrid Wallet System)
 
 [![Go CI](https://github.com/bntngridp/ledger-backend/actions/workflows/go-ci.yml/badge.svg)](https://github.com/bntngridp/ledger-backend/actions/workflows/go-ci.yml)
 
-Backend API untuk sistem e-wallet sederhana. Dibangun dengan Go, Gin, GORM, dan PostgreSQL.
+Backend API untuk sistem **Hybrid Wallet** multi-asset. Mendukung penyimpanan saldo Fiat (Rupiah/IDR) dan Crypto Stablecoin (USDT, USDC), transfer antar user, swap instan dengan kurs real-time, top-up otomatis via Payment Gateway, dan on-chain deposit/withdrawal di blockchain testnet.
 
-## Fitur
+Project ini dibangun dengan arsitektur bersih (**Clean Architecture**) serta menjamin integritas data transaksi keuangan menggunakan **ACID Database Transactions** dan **Pessimistic Locking** (`SELECT ... FOR UPDATE`).
 
-- **Registrasi User** — Buat akun baru + wallet otomatis (atomic)
-- **Login + JWT** — Autentikasi berbasis token
-- **Top-Up Saldo** — Isi saldo wallet
-- **Transfer Uang** — Kirim uang antar user dengan pessimistic locking
-- **Riwayat Transaksi** — Lihat semua transaksi masuk & keluar
+---
+
+## Fitur Utama
+
+### 1. Modul Akun & Multi-Asset Dashboard
+- **Registrasi & Login (JWT)** — Membuat akun user baru beserta wallet multi-asset secara atomic.
+- **Google OAuth 2.0** — Login cepat menggunakan akun Google.
+- **Multi-Asset Dashboard** — Menampilkan ringkasan saldo untuk seluruh aset (`IDR`, `USDT`, `USDC`) beserta estimasi total kekayaan dalam Rupiah.
+
+### 2. Modul Fiat (Rupiah/IDR)
+- **Top-Up Otomatis (Midtrans Sandbox)** — Integrasi dengan Snap API (Virtual Account / QRIS).
+- **Pembayaran Webhook** — Menerima notifikasi settlement pembayaran secara real-time dengan verifikasi Signature Key SHA-512.
+- **Transfer Sesama User** — Transfer saldo Rupiah secara instan dan aman dari race condition.
+- **Withdrawal Fiat (Midtrans Iris Sandbox)** — Simulasi penarikan dana ke rekening bank eksternal dengan auto-refund otomatis jika penarikan gagal.
+
+### 3. Modul Crypto (USDT & USDC)
+- **Generate Deposit Address** — Membuat alamat deposit EVM unik (Polygon Amoy / Sepolia) untuk setiap user. Kunci privat dienkripsi dengan **AES-256-GCM** sebelum disimpan ke database, dan dibersihkan (`zero-out`) dari memori setelah digunakan.
+- **On-Chain Deposit Listener** — Goroutine background yang memantau event transfer ERC-20 secara real-time via **Alchemy Websocket RPC**, lengkap dengan reconnect logic, minimal 3 block confirmations, dan idempotensi `tx_hash`.
+- **Withdrawal Crypto** — Mengirimkan stablecoin ke wallet eksternal dengan building, signing, dan broadcasting transaksi EVM secara mandiri.
+
+### 4. Modul Swap / Konversi Aset
+- **Binance Public API Rate Feed** — Pengambilan kurs real-time dengan in-memory cache TTL 30 detik untuk menghindari rate limiting.
+- **Swap Engine** — Menukar Rupiah <-> Crypto atau Crypto <-> Crypto secara instan dengan pemotongan biaya platform flat 0.5%.
+
+---
 
 ## Tech Stack
 
@@ -18,161 +38,89 @@ Backend API untuk sistem e-wallet sederhana. Dibangun dengan Go, Gin, GORM, dan 
 - **Framework**: Gin v1.12
 - **ORM**: GORM v1.31
 - **Database**: PostgreSQL 16
-- **Auth**: JWT (golang-jwt/jwt/v5)
-- **Password**: bcrypt
+- **Blockchain Interface**: go-ethereum v1.13
+- **Payment Gateway**: Midtrans SDK (Core API / Snap / Iris Disbursement)
+- **Rate Feed**: Binance Spot API
+
+---
 
 ## Prerequisites
 
 - [Go 1.25+](https://go.dev/dl/)
 - [Docker & Docker Compose](https://docs.docker.com/get-docker/)
+- Akun Alchemy (untuk endpoint WS RPC blockchain testnet)
+- Akun Midtrans Sandbox (Server Key & Iris API Key)
+
+---
 
 ## Cara Menjalankan
 
-### 1. Clone repository
-
+### 1. Clone Repository & Setup Env
 ```bash
 git clone https://github.com/bntngridp/ledger-backend.git
 cd ledger-backend
+cp .env.example .env
 ```
+Isi konfigurasi kunci di file `.env` (seperti `JWT_SECRET`, `MIDTRANS_SERVER_KEY`, `MIDTRANS_IRIS_API_KEY`, `ALCHEMY_WS_URL`, dan `CRYPTO_ENCRYPTION_KEY`).
 
-### 2. Jalankan PostgreSQL via Docker
-
+### 2. Jalankan PostgreSQL via Docker Compose
 ```bash
 docker compose up -d
 ```
 
-Tunggu hingga container healthy:
-
-```bash
-docker compose ps
-```
-
-### 3. Jalankan aplikasi
-
+### 3. Jalankan Aplikasi
 ```bash
 go run ./cmd/api
 ```
+Server akan berjalan di `http://localhost:8080`.
 
-Server berjalan di `http://localhost:8080`.
+---
 
 ## Endpoint API
 
-### Public (tanpa token)
+### Public (Tanpa Autentikasi)
 
 | Method | Path | Deskripsi |
 |--------|------|-----------|
 | POST | `/api/v1/auth/register` | Registrasi user baru |
-| POST | `/api/v1/auth/login` | Login, dapat JWT token |
+| POST | `/api/v1/auth/login` | Login user, mengembalikan JWT token |
+| GET | `/api/v1/auth/google` | Inisiasi Google OAuth login |
+| GET | `/api/v1/auth/google/callback` | Callback Google OAuth |
+| POST | `/api/v1/webhooks/midtrans` | Webhook notifikasi pembayaran top-up |
+| POST | `/api/v1/webhooks/iris` | Webhook callback status penarikan bank |
 
-### Protected (perlu header `Authorization: Bearer <token>`)
+### Protected (Menerima header `Authorization: Bearer <token>`)
 
 | Method | Path | Deskripsi |
 |--------|------|-----------|
-| POST | `/api/v1/topup` | Top-up saldo wallet |
-| POST | `/api/v1/transfer` | Transfer uang ke user lain |
-| GET | `/api/v1/transactions` | Riwayat transaksi |
-| GET | `/ping` | Health check |
+| GET | `/api/v1/wallet/dashboard` | Mengambil info wallet & ringkasan saldo |
+| POST | `/api/v1/topup` | Memulai inisiasi top-up fiat (Midtrans Snap) |
+| POST | `/api/v1/transfer` | Transfer fiat/crypto sesama pengguna platform |
+| POST | `/api/v1/fiat/withdraw` | Tarik saldo Rupiah ke rekening bank (Iris) |
+| GET | `/api/v1/crypto/address` | Dapatkan/buat deposit address EVM user |
+| POST | `/api/v1/crypto/withdraw` | Tarik/kirim crypto ke wallet eksternal |
+| GET | `/api/v1/exchange/rate` | Mendapatkan kurs real-time terkini |
+| POST | `/api/v1/exchange/swap` | Konversi/tukar antar saldo aset |
+| GET | `/api/v1/transactions` | Riwayat transaksi (dilengkapi pagination & filter) |
 
-## Contoh Penggunaan (cURL)
-
-### Register
-
-```bash
-curl -X POST http://localhost:8080/api/v1/auth/register \
-  -H "Content-Type: application/json" \
-  -d '{"username":"budi","email":"budi@mail.com","password":"secret123"}'
-```
-
-### Login
-
-```bash
-curl -X POST http://localhost:8080/api/v1/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"email":"budi@mail.com","password":"secret123"}'
-```
-
-### Top-Up
-
-```bash
-curl -X POST http://localhost:8080/api/v1/topup \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer <token>" \
-  -d '{"amount":100000,"notes":"top up pertama"}'
-```
-
-### Transfer
-
-```bash
-curl -X POST http://localhost:8080/api/v1/transfer \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer <token>" \
-  -d '{"destination_user_id":"<uuid>","amount":50000,"notes":"bayar makan"}'
-```
-
-### Riwayat Transaksi
-
-```bash
-curl http://localhost:8080/api/v1/transactions \
-  -H "Authorization: Bearer <token>"
-```
-
-## Struktur Project
-
-```
-ledger-backend-go/
-├── cmd/api/main.go              # Entry point + DI wiring + routes
-├── internal/
-│   ├── domain/                  # Entity, DTO, repository interfaces
-│   ├── delivery/                # HTTP handlers (Gin)
-│   ├── usecase/                 # Business logic
-│   └── repository/              # Data access (GORM)
-├── pkg/
-│   ├── database/                # DB connection + migration
-│   └── middleware/              # JWT auth middleware
-├── docker-compose.yaml
-├── .env
-└── go.mod
-```
-
-## Environment Variabless
-
-| Variable | Default | Deskripsi |
-|----------|---------|-----------|
-| DB_HOST | localhost | PostgreSQL host |
-| DB_PORT | 5432 | PostgreSQL port |
-| DB_USER | postgres | PostgreSQL user |
-| DB_PASSWORD | postgres | PostgreSQL password |
-| DB_NAME | ledger_db | Nama database |
-| DB_SSLMODE | disable | SSL mode |
-| JWT_SECRET | (wajib) | Secret key untuk JWT |
-| JWT_EXPIRY_HOURS | 24 | Masa berlaku token (jam) |
-| PORT | 8080 | Port server | 
+---
 
 ## API Documentation
 
-Dua format dokumentasi tersedia:
-
-### Swagger UI (interaktif)
-
+### Swagger UI
+Swagger dokumentasi dapat diakses secara interaktif melalui:
 ```
 http://localhost:8080/swagger/index.html
 ```
 
-Klik **Authorize** 🔒 → masukkan `Bearer <token>` (dari login). Tiap endpoint bisa di-test langsung dari UI.
-
 ### Postman Collection
+Daftar Postman Collection & Environment JSON lengkap tersedia di dalam direktori `postman/`.
 
-Import file-file di folder `postman/`:
-
-| File | Tipe |
-|------|------|
-| `postman/ledger-backend-go.postman_collection.json` | Collection |
-| `postman/ledger-backend-go.postman_environment.json` | Environment |
-
-Detail lengkap di [`postman/README.md`](postman/README.md). Token auto-saved dari response login, jadi tidak perlu copas manual.
+---
 
 ## Testing
 
+Untuk menjalankan seluruh unit test usecase:
 ```bash
 go test ./...
 ```
