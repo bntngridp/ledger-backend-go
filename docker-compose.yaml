@@ -1,18 +1,18 @@
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: ledger-postgres
+    container_name: ledger-container-postgreySQL
     restart: unless-stopped
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: ledger_db
+      POSTGRES_DB: ledger-db
     ports:
       - "5432:5432"
     volumes:
       - ledger_pg_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d ledger_db"]
+      test: ["CMD-SHELL", "pg_isready -U postgres -d ledger-db"]
       interval: 5s
       timeout: 5s
       retries: 5

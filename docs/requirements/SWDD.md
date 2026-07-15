@@ -5,8 +5,8 @@
 **Tanggal**: 2026-07-14  
 **Status**: Draft  
 **Penulis**: Bintang Ridwan Pribadi  
-**Project**: `ledger-backend-go`  
-**Repository**: `github.com/bntngridp/ledger-backend-go`
+**Project**: `ledger-backend`  
+**Repository**: `github.com/bntngridp/ledger-backend`
 
 ---
 
@@ -34,7 +34,7 @@ Dokumen SWDD (Software Design Description) ini menjabarkan **bagaimana** sistem 
 ### 1.2 Referensi
 
 - [SRS.md](./SRS.md) — Software Requirements Specification
-- Codebase: `github.com/bntngridp/ledger-backend-go`
+- Codebase: `github.com/bntngridp/ledger-backend`
 
 ---
 

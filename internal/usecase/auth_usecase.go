@@ -4,8 +4,9 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/bntngridp/ledger-backend-go/internal/domain"
+	"github.com/bntngridp/ledger-backend/internal/domain"
 	"github.com/google/uuid"
+	"github.com/shopspring/decimal"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -65,7 +66,6 @@ func (uc *authUsecase) Register(username, email, password string) (*domain.Regis
 	wallet := &domain.Wallet{
 		WalletID: walletID,
 		UserID:   userID,
-		Balance:  0,
 	}
 
 	if err := uc.userRepo.CreateUserWithWallet(user, wallet); err != nil {
@@ -77,12 +77,16 @@ func (uc *authUsecase) Register(username, email, password string) (*domain.Regis
 		Username: user.Username,
 		Email:    user.Email,
 		WalletID: walletID.String(),
-		Balance:  0,
+		Balances: []domain.WalletBalanceDTO{
+			{AssetSymbol: "IDR", Balance: decimal.Zero},
+			{AssetSymbol: "USDT", Balance: decimal.Zero},
+			{AssetSymbol: "USDC", Balance: decimal.Zero},
+		},
 	}, nil
 }
 
 type TransferUsecase interface {
-	Transfer(senderUserID uuid.UUID, destUserID uuid.UUID, amount int64, notes string) error
+	Transfer(senderUserID uuid.UUID, destUserID uuid.UUID, amount decimal.Decimal, assetSymbol string, notes string) error
 }
 
 type transferUsecase struct {
@@ -97,8 +101,8 @@ func NewTransferUsecase(walletRepo domain.WalletRepository, txRepo domain.Transa
 	}
 }
 
-func (uc *transferUsecase) Transfer(senderUserID uuid.UUID, destUserID uuid.UUID, amount int64, notes string) error {
-	if amount <= 0 {
+func (uc *transferUsecase) Transfer(senderUserID uuid.UUID, destUserID uuid.UUID, amount decimal.Decimal, assetSymbol string, notes string) error {
+	if amount.LessThanOrEqual(decimal.Zero) {
 		return errors.New("amount must be greater than 0")
 	}
 
@@ -122,5 +126,5 @@ func (uc *transferUsecase) Transfer(senderUserID uuid.UUID, destUserID uuid.UUID
 		return errors.New("recipient wallet not found")
 	}
 
-	return uc.txRepo.ExecuteTransferTx(senderWallet, recipientWallet, amount, notes)
+	return uc.txRepo.ExecuteTransferTx(senderWallet.WalletID, recipientWallet.WalletID, amount, assetSymbol, notes)
 }

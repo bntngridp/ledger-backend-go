@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/bntngridp/ledger-backend-go/internal/domain"
+	"github.com/bntngridp/ledger-backend/internal/domain"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
@@ -28,7 +28,9 @@ func TestRegister_Success(t *testing.T) {
 	assert.NotNil(t, resp)
 	assert.Equal(t, "budi", resp.Username)
 	assert.Equal(t, "budi@mail.com", resp.Email)
-	assert.Equal(t, int64(0), resp.Balance)
+	assert.Len(t, resp.Balances, 3)
+	assert.Equal(t, "IDR", resp.Balances[0].AssetSymbol)
+	assert.True(t, resp.Balances[0].Balance.IsZero())
 	assert.NotEmpty(t, resp.UserID)
 	assert.NotEmpty(t, resp.WalletID)
 	mockUserRepo.AssertExpectations(t)

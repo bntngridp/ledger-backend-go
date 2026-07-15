@@ -5,8 +5,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/bntngridp/ledger-backend-go/internal/domain"
+	"github.com/bntngridp/ledger-backend/internal/domain"
 	"github.com/google/uuid"
+	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -20,30 +21,29 @@ func TestTopUp_Success(t *testing.T) {
 	wallet := &domain.Wallet{
 		WalletID: walletID,
 		UserID:   userID,
-		Balance:  50000,
 	}
 
 	expectedTxID := uuid.New()
 	expectedTx := &domain.Transaction{
 		TransactionID:       expectedTxID,
 		DestinationWalletID: &walletID,
-		Amount:              100000,
+		Amount:              decimal.NewFromInt(100000),
 		Type:                "topup",
 		Status:              "success",
 	}
 
 	mockWalletRepo.On("GetWalletByUserID", userID).Return(wallet, nil)
-	mockTxRepo.On("ExecuteTopUpTx", wallet, int64(100000), "topup awal").
-		Return(expectedTx, int64(150000), nil)
+	mockTxRepo.On("ExecuteTopUpTx", walletID, decimal.NewFromInt(100000), "IDR", "topup awal").
+		Return(expectedTx, decimal.NewFromInt(150000), nil)
 
-	resp, err := uc.TopUp(userID, 100000, "topup awal")
+	resp, err := uc.TopUp(userID, decimal.NewFromInt(100000), "IDR", "topup awal")
 
 	assert.NoError(t, err)
 	assert.NotNil(t, resp)
 	assert.Equal(t, expectedTxID.String(), resp.TransactionID)
 	assert.Equal(t, walletID.String(), resp.WalletID)
-	assert.Equal(t, int64(100000), resp.Amount)
-	assert.Equal(t, int64(150000), resp.NewBalance)
+	assert.True(t, decimal.NewFromInt(100000).Equal(resp.Amount))
+	assert.True(t, decimal.NewFromInt(150000).Equal(resp.NewBalance))
 	mockWalletRepo.AssertExpectations(t)
 	mockTxRepo.AssertExpectations(t)
 }
@@ -55,7 +55,7 @@ func TestTopUp_ZeroAmount(t *testing.T) {
 
 	userID := uuid.New()
 
-	resp, err := uc.TopUp(userID, 0, "test")
+	resp, err := uc.TopUp(userID, decimal.Zero, "IDR", "test")
 
 	assert.Error(t, err)
 	assert.Nil(t, resp)
@@ -71,7 +71,7 @@ func TestTopUp_NegativeAmount(t *testing.T) {
 
 	userID := uuid.New()
 
-	resp, err := uc.TopUp(userID, -1000, "test")
+	resp, err := uc.TopUp(userID, decimal.NewFromInt(-1000), "IDR", "test")
 
 	assert.Error(t, err)
 	assert.Nil(t, resp)
@@ -87,7 +87,7 @@ func TestTopUp_WalletNotFound(t *testing.T) {
 
 	mockWalletRepo.On("GetWalletByUserID", userID).Return(nil, nil)
 
-	resp, err := uc.TopUp(userID, 100000, "test")
+	resp, err := uc.TopUp(userID, decimal.NewFromInt(100000), "IDR", "test")
 
 	assert.Error(t, err)
 	assert.Nil(t, resp)
@@ -105,7 +105,7 @@ func TestTopUp_GetWalletError(t *testing.T) {
 	mockWalletRepo.On("GetWalletByUserID", userID).
 		Return(nil, errors.New("db error"))
 
-	resp, err := uc.TopUp(userID, 100000, "test")
+	resp, err := uc.TopUp(userID, decimal.NewFromInt(100000), "IDR", "test")
 
 	assert.Error(t, err)
 	assert.Nil(t, resp)
@@ -118,13 +118,13 @@ func TestTopUp_ExecuteTxError(t *testing.T) {
 	uc := NewWalletUsecase(mockWalletRepo, mockTxRepo)
 
 	userID := uuid.New()
-	wallet := &domain.Wallet{WalletID: uuid.New(), UserID: userID, Balance: 0}
+	wallet := &domain.Wallet{WalletID: uuid.New(), UserID: userID}
 
 	mockWalletRepo.On("GetWalletByUserID", userID).Return(wallet, nil)
-	mockTxRepo.On("ExecuteTopUpTx", wallet, int64(100000), "test").
-		Return(nil, int64(0), errors.New("failed to lock wallet"))
+	mockTxRepo.On("ExecuteTopUpTx", wallet.WalletID, decimal.NewFromInt(100000), "IDR", "test").
+		Return(nil, decimal.Zero, errors.New("failed to lock wallet"))
 
-	resp, err := uc.TopUp(userID, 100000, "test")
+	resp, err := uc.TopUp(userID, decimal.NewFromInt(100000), "IDR", "test")
 
 	assert.Error(t, err)
 	assert.Nil(t, resp)
@@ -138,14 +138,14 @@ func TestGetTransactionHistory_Success(t *testing.T) {
 
 	userID := uuid.New()
 	walletID := uuid.New()
-	wallet := &domain.Wallet{WalletID: walletID, UserID: userID, Balance: 100000}
+	wallet := &domain.Wallet{WalletID: walletID, UserID: userID}
 
 	otherWalletID := uuid.New()
 	txTopUp := domain.Transaction{
 		TransactionID:       uuid.New(),
 		SourceWalletID:      nil,
 		DestinationWalletID: &walletID,
-		Amount:              100000,
+		Amount:              decimal.NewFromInt(100000),
 		Type:                "topup",
 		Status:              "success",
 		TransactionNotes:    "topup awal",
@@ -155,7 +155,7 @@ func TestGetTransactionHistory_Success(t *testing.T) {
 		TransactionID:       uuid.New(),
 		SourceWalletID:      &otherWalletID,
 		DestinationWalletID: &walletID,
-		Amount:              25000,
+		Amount:              decimal.NewFromInt(25000),
 		Type:                "transfer",
 		Status:              "success",
 		TransactionNotes:    "from other user",
@@ -188,7 +188,7 @@ func TestGetTransactionHistory_EmptyList(t *testing.T) {
 
 	userID := uuid.New()
 	walletID := uuid.New()
-	wallet := &domain.Wallet{WalletID: walletID, UserID: userID, Balance: 0}
+	wallet := &domain.Wallet{WalletID: walletID, UserID: userID}
 
 	mockWalletRepo.On("GetWalletByUserID", userID).Return(wallet, nil)
 	mockTxRepo.On("GetTransactionsByWalletID", walletID).
@@ -240,7 +240,7 @@ func TestGetTransactionHistory_RepoError(t *testing.T) {
 	uc := NewWalletUsecase(mockWalletRepo, mockTxRepo)
 
 	userID := uuid.New()
-	wallet := &domain.Wallet{WalletID: uuid.New(), UserID: userID, Balance: 100}
+	wallet := &domain.Wallet{WalletID: uuid.New(), UserID: userID}
 
 	mockWalletRepo.On("GetWalletByUserID", userID).Return(wallet, nil)
 	mockTxRepo.On("GetTransactionsByWalletID", wallet.WalletID).
@@ -251,4 +251,36 @@ func TestGetTransactionHistory_RepoError(t *testing.T) {
 	assert.Error(t, err)
 	assert.Nil(t, history)
 	assert.Equal(t, "query timeout", err.Error())
+}
+
+func TestGetDashboard_Success(t *testing.T) {
+	mockWalletRepo := new(MockWalletRepository)
+	mockTxRepo := new(MockTransactionRepository)
+	uc := NewWalletUsecase(mockWalletRepo, mockTxRepo)
+
+	userID := uuid.New()
+	walletID := uuid.New()
+	wallet := &domain.Wallet{
+		WalletID: walletID,
+		UserID:   userID,
+		Balances: []domain.WalletBalance{
+			{AssetSymbol: "IDR", Balance: decimal.NewFromInt(50000)},
+			{AssetSymbol: "USDT", Balance: decimal.NewFromInt(10)},
+			{AssetSymbol: "USDC", Balance: decimal.NewFromInt(5)},
+		},
+	}
+
+	mockWalletRepo.On("GetWalletByUserID", userID).Return(wallet, nil)
+
+	dashboard, err := uc.GetDashboard(userID)
+
+	assert.NoError(t, err)
+	assert.NotNil(t, dashboard)
+	assert.Equal(t, walletID.String(), dashboard.WalletID)
+	assert.Len(t, dashboard.Balances, 3)
+
+	// 50000*1 + 10*16200 + 5*16180 = 50000 + 162000 + 80900 = 292900
+	expectedTotal := decimal.NewFromInt(292900)
+	assert.True(t, expectedTotal.Equal(dashboard.EstimatedTotalIDR))
+	mockWalletRepo.AssertExpectations(t)
 }

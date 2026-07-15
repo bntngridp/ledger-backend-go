@@ -5,7 +5,7 @@ import (
 	"log"
 	"time"
 
-	"github.com/bntngridp/ledger-backend-go/internal/domain"
+	"github.com/bntngridp/ledger-backend/internal/domain"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
@@ -65,7 +65,7 @@ func RunMigrations(db *gorm.DB) error {
 		return fmt.Errorf("failed to create uuid-ossp extension: %w", err)
 	}
 
-	if err := db.AutoMigrate(&domain.User{}, &domain.Wallet{}, &domain.Transaction{}); err != nil {
+	if err := db.AutoMigrate(&domain.User{}, &domain.Wallet{}, &domain.WalletBalance{}, &domain.Transaction{}, &domain.CryptoAddress{}); err != nil {
 		return fmt.Errorf("failed to auto-migrate: %w", err)
 	}
 
@@ -76,6 +76,24 @@ func RunMigrations(db *gorm.DB) error {
 		FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
 	`).Error; err != nil {
 		return fmt.Errorf("failed to add wallets user_id FK: %w", err)
+	}
+
+	if err := db.Exec(`
+		ALTER TABLE wallet_balances
+		DROP CONSTRAINT IF EXISTS fk_wallet_balances_wallet_id,
+		ADD CONSTRAINT fk_wallet_balances_wallet_id
+		FOREIGN KEY (wallet_id) REFERENCES wallets(wallet_id) ON DELETE CASCADE
+	`).Error; err != nil {
+		return fmt.Errorf("failed to add wallet_balances wallet_id FK: %w", err)
+	}
+
+	if err := db.Exec(`
+		ALTER TABLE crypto_addresses
+		DROP CONSTRAINT IF EXISTS fk_crypto_addresses_wallet_id,
+		ADD CONSTRAINT fk_crypto_addresses_wallet_id
+		FOREIGN KEY (wallet_id) REFERENCES wallets(wallet_id) ON DELETE CASCADE
+	`).Error; err != nil {
+		return fmt.Errorf("failed to add crypto_addresses wallet_id FK: %w", err)
 	}
 
 	if err := db.Exec(`

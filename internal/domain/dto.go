@@ -1,6 +1,10 @@
 package domain
 
-import "time"
+import (
+	"time"
+
+	"github.com/shopspring/decimal"
+)
 
 type ErrorResponse struct {
 	Status  int    `json:"status"`
@@ -29,41 +33,51 @@ type LoginResponse struct {
 	ExpiresIn int    `json:"expires_in"`
 }
 
-type TransferRequest struct {
-	DestinationUserID string `json:"destination_user_id" binding:"required"`
-	Amount            int64  `json:"amount" binding:"required"`
-	Notes             string `json:"notes"`
+type WalletBalanceDTO struct {
+	AssetSymbol string          `json:"asset_symbol"`
+	Balance     decimal.Decimal `json:"balance"`
 }
 
 type RegisterResponse struct {
-	UserID   string `json:"user_id"`
-	Username string `json:"username"`
-	Email    string `json:"email"`
-	WalletID string `json:"wallet_id"`
-	Balance  int64  `json:"balance"`
+	UserID   string             `json:"user_id"`
+	Username string             `json:"username"`
+	Email    string             `json:"email"`
+	WalletID string             `json:"wallet_id"`
+	Balances []WalletBalanceDTO `json:"balances"`
+}
+
+type TransferRequest struct {
+	DestinationUserID string          `json:"destination_user_id" binding:"required"`
+	AssetSymbol       string          `json:"asset_symbol" binding:"required"`
+	Amount            decimal.Decimal `json:"amount" binding:"required,gt=0"`
+	Notes             string          `json:"notes"`
 }
 
 type TopUpRequest struct {
-	Amount int64  `json:"amount" binding:"required,gt=0"`
-	Notes  string `json:"notes"`
+	Amount decimal.Decimal `json:"amount" binding:"required,gt=0"`
+	Notes  string          `json:"notes"`
 }
 
 type TopUpResponse struct {
-	TransactionID string `json:"transaction_id"`
-	WalletID      string `json:"wallet_id"`
-	Amount        int64  `json:"amount"`
-	NewBalance    int64  `json:"new_balance"`
+	TransactionID string          `json:"transaction_id"`
+	WalletID      string          `json:"wallet_id"`
+	AssetSymbol   string          `json:"asset_symbol"`
+	Amount        decimal.Decimal `json:"amount"`
+	NewBalance    decimal.Decimal `json:"new_balance"`
 }
 
 type TransactionHistoryItem struct {
-	TransactionID       string    `json:"transaction_id"`
-	SourceWalletID      *string   `json:"source_wallet_id"`
-	DestinationWalletID *string   `json:"destination_wallet_id"`
-	Amount              int64     `json:"amount"`
-	Type                string    `json:"type"`
-	Status              string    `json:"status"`
-	TransactionNotes    string    `json:"transaction_notes"`
-	CreatedAt           time.Time `json:"created_at"`
+	TransactionID       string           `json:"transaction_id"`
+	SourceWalletID      *string          `json:"source_wallet_id"`
+	DestinationWalletID *string          `json:"destination_wallet_id"`
+	AssetSymbol         string           `json:"asset_symbol"`
+	Amount              decimal.Decimal  `json:"amount"`
+	Type                string           `json:"type"`
+	Status              string           `json:"status"`
+	TransactionNotes    string           `json:"transaction_notes"`
+	TxHash              *string          `json:"tx_hash,omitempty"`
+	MidtransOrderID     *string          `json:"midtrans_order_id,omitempty"`
+	CreatedAt           time.Time        `json:"created_at"`
 }
 
 type GoogleUserProfile struct {
@@ -75,4 +89,10 @@ type GoogleUserProfile struct {
 	FamilyName    string `json:"family_name"`
 	Picture       string `json:"picture"`
 	Locale        string `json:"locale"`
+}
+
+type DashboardResponse struct {
+	WalletID          string             `json:"wallet_id"`
+	Balances          []WalletBalanceDTO `json:"balances"`
+	EstimatedTotalIDR decimal.Decimal    `json:"estimated_total_idr"`
 }

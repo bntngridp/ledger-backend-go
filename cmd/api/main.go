@@ -22,11 +22,11 @@ import (
 	"os"
 	"strconv"
 
-	"github.com/bntngridp/ledger-backend-go/internal/delivery"
-	repo "github.com/bntngridp/ledger-backend-go/internal/repository"
-	"github.com/bntngridp/ledger-backend-go/internal/usecase"
-	"github.com/bntngridp/ledger-backend-go/pkg/database"
-	"github.com/bntngridp/ledger-backend-go/pkg/middleware"
+	"github.com/bntngridp/ledger-backend/internal/delivery"
+	repo "github.com/bntngridp/ledger-backend/internal/repository"
+	"github.com/bntngridp/ledger-backend/internal/usecase"
+	"github.com/bntngridp/ledger-backend/pkg/database"
+	"github.com/bntngridp/ledger-backend/pkg/middleware"
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
 	swaggerFiles "github.com/swaggo/files"
@@ -34,7 +34,7 @@ import (
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
 
-	_ "github.com/bntngridp/ledger-backend-go/docs"
+	_ "github.com/bntngridp/ledger-backend/docs"
 )
 
 func getEnv(key, fallback string) string {
@@ -65,7 +65,7 @@ func main() {
 		Port:     getEnv("DB_PORT", "5432"),
 		User:     getEnv("DB_USER", "postgres"),
 		Password: getEnv("DB_PASSWORD", ""),
-		DBName:   getEnv("DB_NAME", "ledger_db"),
+		DBName:   getEnv("DB_NAME", "ledger-db"),
 		SSLMode:  getEnv("DB_SSLMODE", "disable"),
 		LogLevel: getEnv("DB_LOG_LEVEL", "warn"),
 	}
@@ -128,6 +128,7 @@ func main() {
 			api.POST("/transfer", transferHandler.Transfer)
 			api.POST("/topup", walletHandler.TopUp)
 			api.GET("/transactions", walletHandler.GetTransactionHistory)
+			api.GET("/wallet/dashboard", walletHandler.GetDashboard)
 		}
 	}
 

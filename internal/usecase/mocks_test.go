@@ -1,8 +1,9 @@
 package usecase
 
 import (
-	"github.com/bntngridp/ledger-backend-go/internal/domain"
+	"github.com/bntngridp/ledger-backend/internal/domain"
 	"github.com/google/uuid"
+	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/mock"
 )
 
@@ -18,21 +19,37 @@ func (m *MockWalletRepository) GetWalletByUserID(userID uuid.UUID) (*domain.Wall
 	return args.Get(0).(*domain.Wallet), args.Error(1)
 }
 
+func (m *MockWalletRepository) GetWalletBalance(walletID uuid.UUID, assetSymbol string) (*domain.WalletBalance, error) {
+	args := m.Called(walletID, assetSymbol)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*domain.WalletBalance), args.Error(1)
+}
+
+func (m *MockWalletRepository) GetBalancesByWalletID(walletID uuid.UUID) ([]domain.WalletBalance, error) {
+	args := m.Called(walletID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).([]domain.WalletBalance), args.Error(1)
+}
+
 type MockTransactionRepository struct {
 	mock.Mock
 }
 
-func (m *MockTransactionRepository) ExecuteTransferTx(sender, recipient *domain.Wallet, amount int64, notes string) error {
-	args := m.Called(sender, recipient, amount, notes)
+func (m *MockTransactionRepository) ExecuteTransferTx(senderWalletID, recipientWalletID uuid.UUID, amount decimal.Decimal, assetSymbol string, notes string) error {
+	args := m.Called(senderWalletID, recipientWalletID, amount, assetSymbol, notes)
 	return args.Error(0)
 }
 
-func (m *MockTransactionRepository) ExecuteTopUpTx(wallet *domain.Wallet, amount int64, notes string) (*domain.Transaction, int64, error) {
-	args := m.Called(wallet, amount, notes)
+func (m *MockTransactionRepository) ExecuteTopUpTx(walletID uuid.UUID, amount decimal.Decimal, assetSymbol string, notes string) (*domain.Transaction, decimal.Decimal, error) {
+	args := m.Called(walletID, amount, assetSymbol, notes)
 	if args.Get(0) == nil {
-		return nil, args.Get(1).(int64), args.Error(2)
+		return nil, args.Get(1).(decimal.Decimal), args.Error(2)
 	}
-	return args.Get(0).(*domain.Transaction), args.Get(1).(int64), args.Error(2)
+	return args.Get(0).(*domain.Transaction), args.Get(1).(decimal.Decimal), args.Error(2)
 }
 
 func (m *MockTransactionRepository) GetTransactionsByWalletID(walletID uuid.UUID) ([]domain.Transaction, error) {
@@ -88,5 +105,30 @@ func (m *MockUserRepository) GetUserByGoogleID(googleID string) (*domain.User, e
 
 func (m *MockUserRepository) UpdateUser(user *domain.User) error {
 	args := m.Called(user)
+	return args.Error(0)
+}
+
+type MockCryptoAddressRepository struct {
+	mock.Mock
+}
+
+func (m *MockCryptoAddressRepository) GetAddressByWalletID(walletID uuid.UUID, network, assetSymbol string) (*domain.CryptoAddress, error) {
+	args := m.Called(walletID, network, assetSymbol)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*domain.CryptoAddress), args.Error(1)
+}
+
+func (m *MockCryptoAddressRepository) GetAddressByValue(address string) (*domain.CryptoAddress, error) {
+	args := m.Called(address)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*domain.CryptoAddress), args.Error(1)
+}
+
+func (m *MockCryptoAddressRepository) CreateAddress(cryptoAddr *domain.CryptoAddress) error {
+	args := m.Called(cryptoAddr)
 	return args.Error(0)
 }

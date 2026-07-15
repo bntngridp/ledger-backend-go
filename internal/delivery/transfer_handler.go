@@ -4,8 +4,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/bntngridp/ledger-backend-go/internal/domain"
-	"github.com/bntngridp/ledger-backend-go/internal/usecase"
+	"github.com/bntngridp/ledger-backend/internal/domain"
+	"github.com/bntngridp/ledger-backend/internal/usecase"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 )
@@ -71,7 +71,7 @@ func (h *TransferHandler) Transfer(c *gin.Context) {
 		return
 	}
 
-	if err := h.transferUC.Transfer(senderID, destID, req.Amount, req.Notes); err != nil {
+	if err := h.transferUC.Transfer(senderID, destID, req.Amount, req.AssetSymbol, req.Notes); err != nil {
 		msg := err.Error()
 		if strings.Contains(msg, "insufficient balance") || strings.Contains(msg, "amount must be greater than 0") || strings.Contains(msg, "cannot transfer to yourself") {
 			c.JSON(http.StatusBadRequest, domain.ErrorResponse{

@@ -5,8 +5,8 @@
 **Tanggal**: 2026-07-14  
 **Status**: Draft  
 **Penulis**: Bintang Ridwan Pribadi  
-**Project**: `ledger-backend-go`  
-**Repository**: `github.com/bntngridp/ledger-backend-go`
+**Project**: `ledger-backend`  
+**Repository**: `github.com/bntngridp/ledger-backend`
 
 ---
 
@@ -51,7 +51,7 @@ Lihat [Bagian 7: Glossary](#7-glossary).
 - [Polygon Amoy Testnet Explorer](https://amoy.polygonscan.com/)
 - [Binance Public API](https://binance-docs.github.io/apidocs/spot/en/)
 - [Alchemy SDK Docs](https://docs.alchemy.com/)
-- Codebase eksisting: `github.com/bntngridp/ledger-backend-go`
+- Codebase eksisting: `github.com/bntngridp/ledger-backend`
 
 ---
 

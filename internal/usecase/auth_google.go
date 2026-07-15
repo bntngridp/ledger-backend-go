@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bntngridp/ledger-backend-go/internal/domain"
+	"github.com/bntngridp/ledger-backend/internal/domain"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 )
@@ -86,7 +86,6 @@ func (uc *authUsecase) LoginWithGoogle(profile *domain.GoogleUserProfile, jwtSec
 	newWallet := &domain.Wallet{
 		WalletID: walletID,
 		UserID:   userID,
-		Balance:  0,
 	}
 
 	if err := uc.userRepo.CreateUserWithWallet(newUser, newWallet); err != nil {

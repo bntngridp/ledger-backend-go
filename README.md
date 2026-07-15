@@ -1,6 +1,6 @@
-# Ledger Backend Go
+# Ledger Backend
 
-[![Go CI](https://github.com/bntngridp/ledger-backend-go/actions/workflows/go-ci.yml/badge.svg)](https://github.com/bntngridp/ledger-backend-go/actions/workflows/go-ci.yml)
+[![Go CI](https://github.com/bntngridp/ledger-backend/actions/workflows/go-ci.yml/badge.svg)](https://github.com/bntngridp/ledger-backend/actions/workflows/go-ci.yml)
 
 Backend API untuk sistem e-wallet sederhana. Dibangun dengan Go, Gin, GORM, dan PostgreSQL.
 
@@ -31,8 +31,8 @@ Backend API untuk sistem e-wallet sederhana. Dibangun dengan Go, Gin, GORM, dan 
 ### 1. Clone repository
 
 ```bash
-git clone https://github.com/bntngridp/ledger-backend-go.git
-cd ledger-backend-go
+git clone https://github.com/bntngridp/ledger-backend.git
+cd ledger-backend
 ```
 
 ### 2. Jalankan PostgreSQL via Docker

@@ -3,8 +3,9 @@ package repository
 import (
 	"errors"
 
-	"github.com/bntngridp/ledger-backend-go/internal/domain"
+	"github.com/bntngridp/ledger-backend/internal/domain"
 	"github.com/google/uuid"
+	"github.com/shopspring/decimal"
 	"gorm.io/gorm"
 )
 
@@ -74,6 +75,20 @@ func (r *userRepository) CreateUserWithWallet(user *domain.User, wallet *domain.
 		wallet.UserID = user.UserID
 		if err := tx.Create(wallet).Error; err != nil {
 			return err
+		}
+
+		// Initialize default balances (IDR, USDT, USDC)
+		defaultAssets := []string{"IDR", "USDT", "USDC"}
+		for _, asset := range defaultAssets {
+			balance := &domain.WalletBalance{
+				BalanceID:   uuid.New(),
+				WalletID:    wallet.WalletID,
+				AssetSymbol: asset,
+				Balance:     decimal.Zero,
+			}
+			if err := tx.Create(balance).Error; err != nil {
+				return err
+			}
 		}
 
 		return nil

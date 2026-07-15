@@ -9,8 +9,8 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/bntngridp/ledger-backend-go/internal/domain"
-	"github.com/bntngridp/ledger-backend-go/internal/usecase"
+	"github.com/bntngridp/ledger-backend/internal/domain"
+	"github.com/bntngridp/ledger-backend/internal/usecase"
 	"github.com/gin-gonic/gin"
 	"golang.org/x/oauth2"
 )

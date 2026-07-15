@@ -4,8 +4,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/bntngridp/ledger-backend-go/internal/domain"
+	"github.com/bntngridp/ledger-backend/internal/domain"
 	"github.com/google/uuid"
+	"github.com/shopspring/decimal"
 	"gorm.io/gorm"
 )
 
@@ -17,29 +18,32 @@ func NewTransactionRepository(db *gorm.DB) domain.TransactionRepository {
 	return &transactionRepository{db: db}
 }
 
-func (r *transactionRepository) ExecuteTransferTx(sender, recipient *domain.Wallet, amount int64, notes string) error {
+func (r *transactionRepository) ExecuteTransferTx(senderWalletID, recipientWalletID uuid.UUID, amount decimal.Decimal, assetSymbol string, notes string) error {
 	return r.db.Transaction(func(tx *gorm.DB) error {
-		var senderBalance int64
-		var recipientBalance int64
+		var senderBalance decimal.Decimal
+		var recipientBalance decimal.Decimal
 
-		row := tx.Raw(`SELECT balance FROM wallets WHERE wallet_id = ? FOR UPDATE`, sender.WalletID).Row()
+		// Fetch and lock sender balance
+		row := tx.Raw(`SELECT balance FROM wallet_balances WHERE wallet_id = ? AND asset_symbol = ? FOR UPDATE`, senderWalletID, assetSymbol).Row()
 		if err := row.Scan(&senderBalance); err != nil {
-			return fmt.Errorf("failed to lock sender wallet: %w", err)
+			return fmt.Errorf("failed to lock sender balance: %w", err)
 		}
 
-		row2 := tx.Raw(`SELECT balance FROM wallets WHERE wallet_id = ? FOR UPDATE`, recipient.WalletID).Row()
+		// Fetch and lock recipient balance
+		row2 := tx.Raw(`SELECT balance FROM wallet_balances WHERE wallet_id = ? AND asset_symbol = ? FOR UPDATE`, recipientWalletID, assetSymbol).Row()
 		if err := row2.Scan(&recipientBalance); err != nil {
-			return fmt.Errorf("failed to lock recipient wallet: %w", err)
+			return fmt.Errorf("failed to lock recipient balance: %w", err)
 		}
 
-		if senderBalance < amount {
-			return fmt.Errorf("insufficient balance: have %d, need %d", senderBalance, amount)
+		if senderBalance.LessThan(amount) {
+			return fmt.Errorf("insufficient balance: have %s, need %s", senderBalance.String(), amount.String())
 		}
 
-		newSenderBalance := senderBalance - amount
-		newRecipientBalance := recipientBalance + amount
+		newSenderBalance := senderBalance.Sub(amount)
+		newRecipientBalance := recipientBalance.Add(amount)
 
-		if err := tx.Model(&domain.Wallet{}).Where("wallet_id = ?", sender.WalletID).
+		// Update sender balance
+		if err := tx.Model(&domain.WalletBalance{}).Where("wallet_id = ? AND asset_symbol = ?", senderWalletID, assetSymbol).
 			Updates(map[string]interface{}{
 				"balance":      newSenderBalance,
 				"last_updated": time.Now(),
@@ -47,7 +51,8 @@ func (r *transactionRepository) ExecuteTransferTx(sender, recipient *domain.Wall
 			return fmt.Errorf("failed to debit sender: %w", err)
 		}
 
-		if err := tx.Model(&domain.Wallet{}).Where("wallet_id = ?", recipient.WalletID).
+		// Update recipient balance
+		if err := tx.Model(&domain.WalletBalance{}).Where("wallet_id = ? AND asset_symbol = ?", recipientWalletID, assetSymbol).
 			Updates(map[string]interface{}{
 				"balance":      newRecipientBalance,
 				"last_updated": time.Now(),
@@ -57,8 +62,9 @@ func (r *transactionRepository) ExecuteTransferTx(sender, recipient *domain.Wall
 
 		transaction := domain.Transaction{
 			TransactionID:       uuid.New(),
-			SourceWalletID:      &sender.WalletID,
-			DestinationWalletID: &recipient.WalletID,
+			SourceWalletID:      &senderWalletID,
+			DestinationWalletID: &recipientWalletID,
+			AssetSymbol:         assetSymbol,
 			Amount:              amount,
 			Type:                "transfer",
 			Status:              "success",
@@ -73,20 +79,20 @@ func (r *transactionRepository) ExecuteTransferTx(sender, recipient *domain.Wall
 	})
 }
 
-func (r *transactionRepository) ExecuteTopUpTx(wallet *domain.Wallet, amount int64, notes string) (*domain.Transaction, int64, error) {
-	var newBalance int64
+func (r *transactionRepository) ExecuteTopUpTx(walletID uuid.UUID, amount decimal.Decimal, assetSymbol string, notes string) (*domain.Transaction, decimal.Decimal, error) {
+	var newBalance decimal.Decimal
 	var transaction domain.Transaction
 
 	err := r.db.Transaction(func(tx *gorm.DB) error {
-		var currentBalance int64
-		row := tx.Raw(`SELECT balance FROM wallets WHERE wallet_id = ? FOR UPDATE`, wallet.WalletID).Row()
+		var currentBalance decimal.Decimal
+		row := tx.Raw(`SELECT balance FROM wallet_balances WHERE wallet_id = ? AND asset_symbol = ? FOR UPDATE`, walletID, assetSymbol).Row()
 		if err := row.Scan(&currentBalance); err != nil {
-			return fmt.Errorf("failed to lock wallet: %w", err)
+			return fmt.Errorf("failed to lock wallet balance: %w", err)
 		}
 
-		newBalance = currentBalance + amount
+		newBalance = currentBalance.Add(amount)
 
-		if err := tx.Model(&domain.Wallet{}).Where("wallet_id = ?", wallet.WalletID).
+		if err := tx.Model(&domain.WalletBalance{}).Where("wallet_id = ? AND asset_symbol = ?", walletID, assetSymbol).
 			Updates(map[string]interface{}{
 				"balance":      newBalance,
 				"last_updated": time.Now(),
@@ -97,7 +103,8 @@ func (r *transactionRepository) ExecuteTopUpTx(wallet *domain.Wallet, amount int
 		transaction = domain.Transaction{
 			TransactionID:       uuid.New(),
 			SourceWalletID:      nil,
-			DestinationWalletID: &wallet.WalletID,
+			DestinationWalletID: &walletID,
+			AssetSymbol:         assetSymbol,
 			Amount:              amount,
 			Type:                "topup",
 			Status:              "success",
@@ -112,7 +119,7 @@ func (r *transactionRepository) ExecuteTopUpTx(wallet *domain.Wallet, amount int
 	})
 
 	if err != nil {
-		return nil, 0, err
+		return nil, decimal.Zero, err
 	}
 
 	return &transaction, newBalance, nil
