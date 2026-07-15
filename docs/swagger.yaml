@@ -53,6 +53,20 @@ definitions:
       network:
         type: string
     type: object
+  domain.Disable2FARequest:
+    properties:
+      code:
+        type: string
+    required:
+    - code
+    type: object
+  domain.Enable2FAResponse:
+    properties:
+      qr_code_url:
+        type: string
+      secret:
+        type: string
+    type: object
   domain.ErrorResponse:
     properties:
       message:
@@ -93,6 +107,16 @@ definitions:
       updated_at:
         type: string
     type: object
+  domain.Login2FARequest:
+    properties:
+      code:
+        type: string
+      pre_auth_token:
+        type: string
+    required:
+    - code
+    - pre_auth_token
+    type: object
   domain.LoginRequest:
     properties:
       email:
@@ -107,8 +131,12 @@ definitions:
     properties:
       expires_in:
         type: integer
+      pre_auth_token:
+        type: string
       token:
         type: string
+      two_factor_required:
+        type: boolean
     type: object
   domain.PaginationMeta:
     properties:
@@ -265,6 +293,13 @@ definitions:
     - asset_symbol
     - destination_user_id
     type: object
+  domain.Verify2FARequest:
+    properties:
+      code:
+        type: string
+    required:
+    - code
+    type: object
   domain.WalletBalanceDTO:
     properties:
       asset_symbol:
@@ -318,6 +353,136 @@ info:
   title: Ledger Backend API
   version: "1.0"
 paths:
+  /auth/2fa/disable:
+    post:
+      consumes:
+      - application/json
+      description: Disables 2FA by validating the current TOTP code.
+      parameters:
+      - description: Disable 2FA payload
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/domain.Disable2FARequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 2FA disabled successfully
+          schema:
+            $ref: '#/definitions/domain.SuccessResponse'
+        "400":
+          description: Invalid code
+          schema:
+            $ref: '#/definitions/domain.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/domain.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Disable 2FA TOTP
+      tags:
+      - auth
+  /auth/2fa/enable:
+    post:
+      description: Generates a new TOTP secret key and QR code provisioning URL for
+        the authenticated user.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Secret generated successfully
+          schema:
+            allOf:
+            - $ref: '#/definitions/domain.SuccessResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/domain.Enable2FAResponse'
+              type: object
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/domain.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/domain.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Generate 2FA TOTP secret key
+      tags:
+      - auth
+  /auth/2fa/login:
+    post:
+      consumes:
+      - application/json
+      description: Verifies the TOTP code against the pre-auth token and returns the
+        final JWT token.
+      parameters:
+      - description: Login 2FA challenge payload
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/domain.Login2FARequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Login successful
+          schema:
+            allOf:
+            - $ref: '#/definitions/domain.SuccessResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/domain.LoginResponse'
+              type: object
+        "400":
+          description: Invalid pre-auth token or code
+          schema:
+            $ref: '#/definitions/domain.ErrorResponse'
+        "401":
+          description: Invalid TOTP code
+          schema:
+            $ref: '#/definitions/domain.ErrorResponse'
+      summary: Complete 2FA login challenge
+      tags:
+      - auth
+  /auth/2fa/verify:
+    post:
+      consumes:
+      - application/json
+      description: Verifies the first TOTP code to confirm scanning and officially
+        enables 2FA for the account.
+      parameters:
+      - description: Verify 2FA payload
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/domain.Verify2FARequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: 2FA enabled successfully
+          schema:
+            $ref: '#/definitions/domain.SuccessResponse'
+        "400":
+          description: Invalid code or signature
+          schema:
+            $ref: '#/definitions/domain.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/domain.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Verify and enable 2FA TOTP
+      tags:
+      - auth
   /auth/google:
     get:
       description: Redirects the client to Google's OAuth2 consent page.

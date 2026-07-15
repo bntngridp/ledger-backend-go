@@ -48,4 +48,10 @@ var (
 
 	// ErrSameAssetSwap is returned when from_asset equals to_asset in a swap.
 	ErrSameAssetSwap = errors.New("cannot swap asset to itself")
+
+	// ErrInvalid2FACode is returned when the 2FA code verification fails.
+	ErrInvalid2FACode = errors.New("invalid or expired 2FA code")
+
+	// Err2FARequired is returned when 2FA code is missing for sensitive action.
+	Err2FARequired = errors.New("2FA code required")
 )

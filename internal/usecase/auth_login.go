@@ -24,5 +24,16 @@ func (uc *authUsecase) Login(email, password, jwtSecret string, expiryHours int)
 		return nil, errors.New("invalid email or password")
 	}
 
+	if user.TwoFactorEnabled {
+		preAuthToken, err := uc.generatePreAuthToken(user, jwtSecret)
+		if err != nil {
+			return nil, err
+		}
+		return &domain.LoginResponse{
+			TwoFactorRequired: true,
+			PreAuthToken:      preAuthToken,
+		}, nil
+	}
+
 	return uc.generateJWTResponse(user, jwtSecret, expiryHours)
 }

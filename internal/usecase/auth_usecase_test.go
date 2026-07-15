@@ -1,13 +1,16 @@
 package usecase
 
 import (
+	"encoding/hex"
 	"errors"
 	"testing"
 	"time"
 
 	"github.com/bntngridp/ledger-backend/internal/domain"
+	pkgcrypto "github.com/bntngridp/ledger-backend/pkg/crypto"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
+	"github.com/pquerna/otp/totp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"golang.org/x/crypto/bcrypt"
@@ -16,7 +19,7 @@ import (
 func TestRegister_Success(t *testing.T) {
 	mockUserRepo := new(MockUserRepository)
 	mockWalletRepo := new(MockWalletRepository)
-	uc := NewAuthUsecase(mockUserRepo, mockWalletRepo)
+	uc := NewAuthUsecase(mockUserRepo, mockWalletRepo, "MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTIzNDU2Nzg5MDE=")
 
 	mockUserRepo.On("CheckEmailExists", "budi@mail.com").Return(false, nil)
 	mockUserRepo.On("CheckUsernameExists", "budi").Return(false, nil)
@@ -39,7 +42,7 @@ func TestRegister_Success(t *testing.T) {
 func TestRegister_EmailAlreadyRegistered(t *testing.T) {
 	mockUserRepo := new(MockUserRepository)
 	mockWalletRepo := new(MockWalletRepository)
-	uc := NewAuthUsecase(mockUserRepo, mockWalletRepo)
+	uc := NewAuthUsecase(mockUserRepo, mockWalletRepo, "MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTIzNDU2Nzg5MDE=")
 
 	mockUserRepo.On("CheckEmailExists", "budi@mail.com").Return(true, nil)
 
@@ -55,7 +58,7 @@ func TestRegister_EmailAlreadyRegistered(t *testing.T) {
 func TestRegister_UsernameAlreadyTaken(t *testing.T) {
 	mockUserRepo := new(MockUserRepository)
 	mockWalletRepo := new(MockWalletRepository)
-	uc := NewAuthUsecase(mockUserRepo, mockWalletRepo)
+	uc := NewAuthUsecase(mockUserRepo, mockWalletRepo, "MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTIzNDU2Nzg5MDE=")
 
 	mockUserRepo.On("CheckEmailExists", "budi@mail.com").Return(false, nil)
 	mockUserRepo.On("CheckUsernameExists", "budi").Return(true, nil)
@@ -71,7 +74,7 @@ func TestRegister_UsernameAlreadyTaken(t *testing.T) {
 func TestRegister_CheckEmailError(t *testing.T) {
 	mockUserRepo := new(MockUserRepository)
 	mockWalletRepo := new(MockWalletRepository)
-	uc := NewAuthUsecase(mockUserRepo, mockWalletRepo)
+	uc := NewAuthUsecase(mockUserRepo, mockWalletRepo, "MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTIzNDU2Nzg5MDE=")
 
 	mockUserRepo.On("CheckEmailExists", "budi@mail.com").
 		Return(false, errors.New("db connection lost"))
@@ -86,7 +89,7 @@ func TestRegister_CheckEmailError(t *testing.T) {
 func TestRegister_CheckUsernameError(t *testing.T) {
 	mockUserRepo := new(MockUserRepository)
 	mockWalletRepo := new(MockWalletRepository)
-	uc := NewAuthUsecase(mockUserRepo, mockWalletRepo)
+	uc := NewAuthUsecase(mockUserRepo, mockWalletRepo, "MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTIzNDU2Nzg5MDE=")
 
 	mockUserRepo.On("CheckEmailExists", "budi@mail.com").Return(false, nil)
 	mockUserRepo.On("CheckUsernameExists", "budi").
@@ -102,7 +105,7 @@ func TestRegister_CheckUsernameError(t *testing.T) {
 func TestRegister_CreateUserWithWalletError(t *testing.T) {
 	mockUserRepo := new(MockUserRepository)
 	mockWalletRepo := new(MockWalletRepository)
-	uc := NewAuthUsecase(mockUserRepo, mockWalletRepo)
+	uc := NewAuthUsecase(mockUserRepo, mockWalletRepo, "MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTIzNDU2Nzg5MDE=")
 
 	mockUserRepo.On("CheckEmailExists", "budi@mail.com").Return(false, nil)
 	mockUserRepo.On("CheckUsernameExists", "budi").Return(false, nil)
@@ -119,7 +122,7 @@ func TestRegister_CreateUserWithWalletError(t *testing.T) {
 func TestRegister_PasswordIsHashed(t *testing.T) {
 	mockUserRepo := new(MockUserRepository)
 	mockWalletRepo := new(MockWalletRepository)
-	uc := NewAuthUsecase(mockUserRepo, mockWalletRepo)
+	uc := NewAuthUsecase(mockUserRepo, mockWalletRepo, "MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTIzNDU2Nzg5MDE=")
 
 	var capturedUser *domain.User
 	mockUserRepo.On("CheckEmailExists", "budi@mail.com").Return(false, nil)
@@ -140,7 +143,7 @@ func TestRegister_PasswordIsHashed(t *testing.T) {
 func TestLogin_Success(t *testing.T) {
 	mockUserRepo := new(MockUserRepository)
 	mockWalletRepo := new(MockWalletRepository)
-	uc := NewAuthUsecase(mockUserRepo, mockWalletRepo)
+	uc := NewAuthUsecase(mockUserRepo, mockWalletRepo, "MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTIzNDU2Nzg5MDE=")
 
 	hashed, _ := bcrypt.GenerateFromPassword([]byte("secret123"), bcrypt.DefaultCost)
 	hashedStr := string(hashed)
@@ -175,7 +178,7 @@ func TestLogin_Success(t *testing.T) {
 func TestLogin_InvalidEmail(t *testing.T) {
 	mockUserRepo := new(MockUserRepository)
 	mockWalletRepo := new(MockWalletRepository)
-	uc := NewAuthUsecase(mockUserRepo, mockWalletRepo)
+	uc := NewAuthUsecase(mockUserRepo, mockWalletRepo, "MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTIzNDU2Nzg5MDE=")
 
 	mockUserRepo.On("GetUserByEmail", "nonexistent@mail.com").Return(nil, nil)
 
@@ -189,7 +192,7 @@ func TestLogin_InvalidEmail(t *testing.T) {
 func TestLogin_WrongPassword(t *testing.T) {
 	mockUserRepo := new(MockUserRepository)
 	mockWalletRepo := new(MockWalletRepository)
-	uc := NewAuthUsecase(mockUserRepo, mockWalletRepo)
+	uc := NewAuthUsecase(mockUserRepo, mockWalletRepo, "MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTIzNDU2Nzg5MDE=")
 
 	hashed, _ := bcrypt.GenerateFromPassword([]byte("secret123"), bcrypt.DefaultCost)
 	hashedStr := string(hashed)
@@ -211,7 +214,7 @@ func TestLogin_WrongPassword(t *testing.T) {
 func TestLogin_GetUserByEmailError(t *testing.T) {
 	mockUserRepo := new(MockUserRepository)
 	mockWalletRepo := new(MockWalletRepository)
-	uc := NewAuthUsecase(mockUserRepo, mockWalletRepo)
+	uc := NewAuthUsecase(mockUserRepo, mockWalletRepo, "MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTIzNDU2Nzg5MDE=")
 
 	mockUserRepo.On("GetUserByEmail", "budi@mail.com").
 		Return(nil, errors.New("db error"))
@@ -226,7 +229,7 @@ func TestLogin_GetUserByEmailError(t *testing.T) {
 func TestLogin_TokenExpiryMatchesConfig(t *testing.T) {
 	mockUserRepo := new(MockUserRepository)
 	mockWalletRepo := new(MockWalletRepository)
-	uc := NewAuthUsecase(mockUserRepo, mockWalletRepo)
+	uc := NewAuthUsecase(mockUserRepo, mockWalletRepo, "MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTIzNDU2Nzg5MDE=")
 
 	hashed, _ := bcrypt.GenerateFromPassword([]byte("secret123"), bcrypt.DefaultCost)
 	hashedStr := string(hashed)
@@ -260,7 +263,7 @@ func TestLogin_TokenExpiryMatchesConfig(t *testing.T) {
 func TestLoginWithGoogle_NewUser(t *testing.T) {
 	mockUserRepo := new(MockUserRepository)
 	mockWalletRepo := new(MockWalletRepository)
-	uc := NewAuthUsecase(mockUserRepo, mockWalletRepo)
+	uc := NewAuthUsecase(mockUserRepo, mockWalletRepo, "MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTIzNDU2Nzg5MDE=")
 
 	profile := &domain.GoogleUserProfile{
 		ID:      "google-id-123",
@@ -285,7 +288,7 @@ func TestLoginWithGoogle_NewUser(t *testing.T) {
 func TestLoginWithGoogle_ExistingUser(t *testing.T) {
 	mockUserRepo := new(MockUserRepository)
 	mockWalletRepo := new(MockWalletRepository)
-	uc := NewAuthUsecase(mockUserRepo, mockWalletRepo)
+	uc := NewAuthUsecase(mockUserRepo, mockWalletRepo, "MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTIzNDU2Nzg5MDE=")
 
 	profile := &domain.GoogleUserProfile{
 		ID:      "google-id-123",
@@ -309,4 +312,83 @@ func TestLoginWithGoogle_ExistingUser(t *testing.T) {
 	assert.NotNil(t, resp)
 	assert.NotEmpty(t, resp.Token)
 	mockUserRepo.AssertExpectations(t)
+}
+
+func TestGenerate2FASecret_Success(t *testing.T) {
+	mockUserRepo := new(MockUserRepository)
+	mockWalletRepo := new(MockWalletRepository)
+	uc := NewAuthUsecase(mockUserRepo, mockWalletRepo, "MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTIzNDU2Nzg5MDE=")
+
+	userID := uuid.New()
+	user := &domain.User{
+		UserID: userID,
+		Email:  "test@mail.com",
+	}
+
+	mockUserRepo.On("GetUserByID", userID).Return(user, nil)
+	mockUserRepo.On("Update2FA", userID, mock.Anything, false).Return(nil)
+
+	resp, err := uc.Generate2FASecret(userID)
+	assert.NoError(t, err)
+	assert.NotNil(t, resp)
+	assert.NotEmpty(t, resp.Secret)
+	assert.NotEmpty(t, resp.QRCodeURL)
+}
+
+func TestEnable2FA_Success(t *testing.T) {
+	mockUserRepo := new(MockUserRepository)
+	mockWalletRepo := new(MockWalletRepository)
+	uc := NewAuthUsecase(mockUserRepo, mockWalletRepo, "MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTIzNDU2Nzg5MDE=")
+
+	userID := uuid.New()
+	key, _ := totp.Generate(totp.GenerateOpts{
+		Issuer:      "Ledger",
+		AccountName: "test@mail.com",
+	})
+	secret := key.Secret()
+
+	keyBytes := []byte("01234567890123456789012345678901")
+	encBytes, _ := pkgcrypto.Encrypt([]byte(secret), keyBytes)
+	encryptedHex := hex.EncodeToString(encBytes)
+
+	user := &domain.User{
+		UserID:          userID,
+		Email:           "test@mail.com",
+		TwoFactorSecret: &encryptedHex,
+	}
+
+	mockUserRepo.On("GetUserByID", userID).Return(user, nil)
+	mockUserRepo.On("Update2FA", userID, &encryptedHex, true).Return(nil)
+
+	code, _ := totp.GenerateCode(secret, time.Now())
+	err := uc.Enable2FA(userID, code)
+	assert.NoError(t, err)
+}
+
+func TestEnable2FA_InvalidCode(t *testing.T) {
+	mockUserRepo := new(MockUserRepository)
+	mockWalletRepo := new(MockWalletRepository)
+	uc := NewAuthUsecase(mockUserRepo, mockWalletRepo, "MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTIzNDU2Nzg5MDE=")
+
+	userID := uuid.New()
+	key, _ := totp.Generate(totp.GenerateOpts{
+		Issuer:      "Ledger",
+		AccountName: "test@mail.com",
+	})
+	secret := key.Secret()
+
+	keyBytes := []byte("01234567890123456789012345678901")
+	encBytes, _ := pkgcrypto.Encrypt([]byte(secret), keyBytes)
+	encryptedHex := hex.EncodeToString(encBytes)
+
+	user := &domain.User{
+		UserID:          userID,
+		Email:           "test@mail.com",
+		TwoFactorSecret: &encryptedHex,
+	}
+
+	mockUserRepo.On("GetUserByID", userID).Return(user, nil)
+
+	err := uc.Enable2FA(userID, "000000")
+	assert.ErrorIs(t, err, domain.ErrInvalid2FACode)
 }

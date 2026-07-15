@@ -65,6 +65,14 @@ func HandleError(c *gin.Context, err error) {
 		status = http.StatusForbidden
 		message = err.Error()
 
+	case errors.Is(err, domain.ErrInvalid2FACode):
+		status = http.StatusUnauthorized
+		message = err.Error()
+
+	case errors.Is(err, domain.Err2FARequired):
+		status = http.StatusForbidden
+		message = err.Error()
+
 	default:
 		log.Printf("[ERROR] Unhandled error: %v", err)
 		status = http.StatusInternalServerError

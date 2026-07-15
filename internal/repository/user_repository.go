@@ -98,3 +98,11 @@ func (r *userRepository) CreateUserWithWallet(user *domain.User, wallet *domain.
 func (r *userRepository) UpdateUser(user *domain.User) error {
 	return r.db.Save(user).Error
 }
+
+func (r *userRepository) Update2FA(userID uuid.UUID, secret *string, enabled bool) error {
+	return r.db.Model(&domain.User{}).Where("user_id = ?", userID).
+		Updates(map[string]interface{}{
+			"two_factor_secret":  secret,
+			"two_factor_enabled": enabled,
+		}).Error
+}

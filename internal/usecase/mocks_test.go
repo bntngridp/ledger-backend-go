@@ -190,6 +190,11 @@ func (m *MockUserRepository) UpdateUser(user *domain.User) error {
 	return args.Error(0)
 }
 
+func (m *MockUserRepository) Update2FA(userID uuid.UUID, secret *string, enabled bool) error {
+	args := m.Called(userID, secret, enabled)
+	return args.Error(0)
+}
+
 type MockCryptoAddressRepository struct {
 	mock.Mock
 }

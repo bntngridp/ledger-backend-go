@@ -33,8 +33,28 @@ type LoginRequest struct {
 }
 
 type LoginResponse struct {
-	Token     string `json:"token"`
-	ExpiresIn int    `json:"expires_in"`
+	Token             string `json:"token,omitempty"`
+	ExpiresIn         int    `json:"expires_in,omitempty"`
+	TwoFactorRequired bool   `json:"two_factor_required"`
+	PreAuthToken      string `json:"pre_auth_token,omitempty"`
+}
+
+type Enable2FAResponse struct {
+	Secret    string `json:"secret"`
+	QRCodeURL string `json:"qr_code_url"`
+}
+
+type Verify2FARequest struct {
+	Code string `json:"code" binding:"required,len=6"`
+}
+
+type Disable2FARequest struct {
+	Code string `json:"code" binding:"required,len=6"`
+}
+
+type Login2FARequest struct {
+	PreAuthToken string `json:"pre_auth_token" binding:"required"`
+	Code         string `json:"code" binding:"required,len=6"`
 }
 
 // ============================================================

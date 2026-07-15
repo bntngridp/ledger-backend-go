@@ -6,6 +6,7 @@ import (
 	"github.com/bntngridp/ledger-backend/internal/domain"
 	"github.com/bntngridp/ledger-backend/internal/usecase"
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 )
 
 type AuthHandler struct {
@@ -105,6 +106,217 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, domain.ErrorResponse{
 			Status:  http.StatusInternalServerError,
 			Message: "internal server error",
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, domain.SuccessResponse{
+		Status:  http.StatusOK,
+		Message: "login successful",
+		Data:    resp,
+	})
+}
+
+// Enable2FA godoc
+// @Summary      Generate 2FA TOTP secret key
+// @Description  Generates a new TOTP secret key and QR code provisioning URL for the authenticated user.
+// @Tags         auth
+// @Produce      json
+// @Security     BearerAuth
+// @Success      200 {object} domain.SuccessResponse{data=domain.Enable2FAResponse} "Secret generated successfully"
+// @Failure      401 {object} domain.ErrorResponse "Unauthorized"
+// @Failure      500 {object} domain.ErrorResponse "Internal server error"
+// @Router       /auth/2fa/enable [post]
+func (h *AuthHandler) Enable2FA(c *gin.Context) {
+	userIDStr, exists := c.Get("user_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, domain.ErrorResponse{
+			Status:  http.StatusUnauthorized,
+			Message: "unauthorized",
+		})
+		return
+	}
+
+	userID, err := uuid.Parse(userIDStr.(string))
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, domain.ErrorResponse{
+			Status:  http.StatusUnauthorized,
+			Message: "unauthorized",
+		})
+		return
+	}
+
+	resp, err := h.authUC.Generate2FASecret(userID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, domain.ErrorResponse{
+			Status:  http.StatusInternalServerError,
+			Message: err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, domain.SuccessResponse{
+		Status:  http.StatusOK,
+		Message: "2FA secret generated successfully",
+		Data:    resp,
+	})
+}
+
+// Verify2FA godoc
+// @Summary      Verify and enable 2FA TOTP
+// @Description  Verifies the first TOTP code to confirm scanning and officially enables 2FA for the account.
+// @Tags         auth
+// @Accept       json
+// @Produce      json
+// @Security     BearerAuth
+// @Param        request body domain.Verify2FARequest true "Verify 2FA payload"
+// @Success      200 {object} domain.SuccessResponse "2FA enabled successfully"
+// @Failure      400 {object} domain.ErrorResponse "Invalid code or signature"
+// @Failure      401 {object} domain.ErrorResponse "Unauthorized"
+// @Router       /auth/2fa/verify [post]
+func (h *AuthHandler) Verify2FA(c *gin.Context) {
+	userIDStr, exists := c.Get("user_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, domain.ErrorResponse{
+			Status:  http.StatusUnauthorized,
+			Message: "unauthorized",
+		})
+		return
+	}
+
+	userID, err := uuid.Parse(userIDStr.(string))
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, domain.ErrorResponse{
+			Status:  http.StatusUnauthorized,
+			Message: "unauthorized",
+		})
+		return
+	}
+
+	var req domain.Verify2FARequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, domain.ErrorResponse{
+			Status:  http.StatusBadRequest,
+			Message: "invalid request: " + err.Error(),
+		})
+		return
+	}
+
+	if err := h.authUC.Enable2FA(userID, req.Code); err != nil {
+		if err == domain.ErrInvalid2FACode {
+			c.JSON(http.StatusUnauthorized, domain.ErrorResponse{
+				Status:  http.StatusUnauthorized,
+				Message: err.Error(),
+			})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, domain.ErrorResponse{
+			Status:  http.StatusInternalServerError,
+			Message: err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, domain.SuccessResponse{
+		Status:  http.StatusOK,
+		Message: "2FA enabled successfully",
+	})
+}
+
+// Disable2FA godoc
+// @Summary      Disable 2FA TOTP
+// @Description  Disables 2FA by validating the current TOTP code.
+// @Tags         auth
+// @Accept       json
+// @Produce      json
+// @Security     BearerAuth
+// @Param        request body domain.Disable2FARequest true "Disable 2FA payload"
+// @Success      200 {object} domain.SuccessResponse "2FA disabled successfully"
+// @Failure      400 {object} domain.ErrorResponse "Invalid code"
+// @Failure      401 {object} domain.ErrorResponse "Unauthorized"
+// @Router       /auth/2fa/disable [post]
+func (h *AuthHandler) Disable2FA(c *gin.Context) {
+	userIDStr, exists := c.Get("user_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, domain.ErrorResponse{
+			Status:  http.StatusUnauthorized,
+			Message: "unauthorized",
+		})
+		return
+	}
+
+	userID, err := uuid.Parse(userIDStr.(string))
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, domain.ErrorResponse{
+			Status:  http.StatusUnauthorized,
+			Message: "unauthorized",
+		})
+		return
+	}
+
+	var req domain.Disable2FARequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, domain.ErrorResponse{
+			Status:  http.StatusBadRequest,
+			Message: "invalid request: " + err.Error(),
+		})
+		return
+	}
+
+	if err := h.authUC.Disable2FA(userID, req.Code); err != nil {
+		if err == domain.ErrInvalid2FACode {
+			c.JSON(http.StatusUnauthorized, domain.ErrorResponse{
+				Status:  http.StatusUnauthorized,
+				Message: err.Error(),
+			})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, domain.ErrorResponse{
+			Status:  http.StatusInternalServerError,
+			Message: err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, domain.SuccessResponse{
+		Status:  http.StatusOK,
+		Message: "2FA disabled successfully",
+	})
+}
+
+// Login2FA godoc
+// @Summary      Complete 2FA login challenge
+// @Description  Verifies the TOTP code against the pre-auth token and returns the final JWT token.
+// @Tags         auth
+// @Accept       json
+// @Produce      json
+// @Param        request body domain.Login2FARequest true "Login 2FA challenge payload"
+// @Success      200 {object} domain.SuccessResponse{data=domain.LoginResponse} "Login successful"
+// @Failure      400 {object} domain.ErrorResponse "Invalid pre-auth token or code"
+// @Failure      401 {object} domain.ErrorResponse "Invalid TOTP code"
+// @Router       /auth/2fa/login [post]
+func (h *AuthHandler) Login2FA(c *gin.Context) {
+	var req domain.Login2FARequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, domain.ErrorResponse{
+			Status:  http.StatusBadRequest,
+			Message: "invalid request: " + err.Error(),
+		})
+		return
+	}
+
+	resp, err := h.authUC.Verify2FALogin(req.PreAuthToken, req.Code, h.jwtSecret, h.expiryHours)
+	if err != nil {
+		if err == domain.ErrInvalid2FACode || err == domain.ErrUnauthorized {
+			c.JSON(http.StatusUnauthorized, domain.ErrorResponse{
+				Status:  http.StatusUnauthorized,
+				Message: err.Error(),
+			})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, domain.ErrorResponse{
+			Status:  http.StatusInternalServerError,
+			Message: "internal server error: " + err.Error(),
 		})
 		return
 	}

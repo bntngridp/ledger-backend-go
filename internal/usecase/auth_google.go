@@ -23,7 +23,7 @@ func (uc *authUsecase) LoginWithGoogle(profile *domain.GoogleUserProfile, jwtSec
 		if err := uc.userRepo.UpdateUser(user); err != nil {
 			return nil, fmt.Errorf("failed to update user avatar: %w", err)
 		}
-		return uc.generateJWTResponse(user, jwtSecret, expiryHours)
+		return uc.handleLoginResponse(user, jwtSecret, expiryHours)
 	}
 
 	// 2. GoogleID not found, check if email is registered
@@ -39,7 +39,7 @@ func (uc *authUsecase) LoginWithGoogle(profile *domain.GoogleUserProfile, jwtSec
 		if err := uc.userRepo.UpdateUser(user); err != nil {
 			return nil, fmt.Errorf("failed to link google account: %w", err)
 		}
-		return uc.generateJWTResponse(user, jwtSecret, expiryHours)
+		return uc.handleLoginResponse(user, jwtSecret, expiryHours)
 	}
 
 	// 3. User is brand new, register new user with wallet
@@ -92,7 +92,7 @@ func (uc *authUsecase) LoginWithGoogle(profile *domain.GoogleUserProfile, jwtSec
 		return nil, fmt.Errorf("failed to create user with google: %w", err)
 	}
 
-	return uc.generateJWTResponse(newUser, jwtSecret, expiryHours)
+	return uc.handleLoginResponse(newUser, jwtSecret, expiryHours)
 }
 
 func (uc *authUsecase) generateJWTResponse(user *domain.User, jwtSecret string, expiryHours int) (*domain.LoginResponse, error) {
@@ -115,4 +115,18 @@ func (uc *authUsecase) generateJWTResponse(user *domain.User, jwtSecret string, 
 		Token:     tokenStr,
 		ExpiresIn: expiryHours,
 	}, nil
+}
+
+func (uc *authUsecase) handleLoginResponse(user *domain.User, jwtSecret string, expiryHours int) (*domain.LoginResponse, error) {
+	if user.TwoFactorEnabled {
+		preAuthToken, err := uc.generatePreAuthToken(user, jwtSecret)
+		if err != nil {
+			return nil, err
+		}
+		return &domain.LoginResponse{
+			TwoFactorRequired: true,
+			PreAuthToken:      preAuthToken,
+		}, nil
+	}
+	return uc.generateJWTResponse(user, jwtSecret, expiryHours)
 }

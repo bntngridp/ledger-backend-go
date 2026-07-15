@@ -13,6 +13,7 @@ Project ini dibangun dengan arsitektur bersih (**Clean Architecture**) serta men
 ### 1. Modul Akun & Multi-Asset Dashboard
 - **Registrasi & Login (JWT)** — Membuat akun user baru beserta wallet multi-asset secara atomic.
 - **Google OAuth 2.0** — Login cepat menggunakan akun Google.
+- **Google Authenticator (2FA / TOTP)** — Autentikasi dua langkah menggunakan Google Authenticator. Melindungi login akun serta tindakan sensitif (seperti transfer & penarikan) via verifikasi kode OTP berbasis waktu (TOTP) yang dienkripsi menggunakan AES-256-GCM pada database.
 - **Multi-Asset Dashboard** — Menampilkan ringkasan saldo untuk seluruh aset (`IDR`, `USDT`, `USDC`) beserta estimasi total kekayaan dalam Rupiah.
 
 ### 2. Modul Fiat (Rupiah/IDR)
@@ -83,7 +84,8 @@ Server akan berjalan di `http://localhost:8080`.
 | Method | Path | Deskripsi |
 |--------|------|-----------|
 | POST | `/api/v1/auth/register` | Registrasi user baru |
-| POST | `/api/v1/auth/login` | Login user, mengembalikan JWT token |
+| POST | `/api/v1/auth/login` | Login user (jika 2FA aktif, menghasilkan `pre_auth_token`) |
+| POST | `/api/v1/auth/2fa/login` | Menyelesaikan tantangan login 2FA dengan kode OTP |
 | GET | `/api/v1/auth/google` | Inisiasi Google OAuth login |
 | GET | `/api/v1/auth/google/callback` | Callback Google OAuth |
 | POST | `/api/v1/webhooks/midtrans` | Webhook notifikasi pembayaran top-up |
@@ -95,13 +97,19 @@ Server akan berjalan di `http://localhost:8080`.
 |--------|------|-----------|
 | GET | `/api/v1/wallet/dashboard` | Mengambil info wallet & ringkasan saldo |
 | POST | `/api/v1/topup` | Memulai inisiasi top-up fiat (Midtrans Snap) |
-| POST | `/api/v1/transfer` | Transfer fiat/crypto sesama pengguna platform |
-| POST | `/api/v1/fiat/withdraw` | Tarik saldo Rupiah ke rekening bank (Iris) |
+| POST | `/api/v1/transfer` | Transfer fiat/crypto sesama pengguna platform * |
+| POST | `/api/v1/fiat/withdraw` | Tarik saldo Rupiah ke rekening bank (Iris) * |
 | GET | `/api/v1/crypto/address` | Dapatkan/buat deposit address EVM user |
-| POST | `/api/v1/crypto/withdraw` | Tarik/kirim crypto ke wallet eksternal |
+| POST | `/api/v1/crypto/withdraw` | Tarik/kirim crypto ke wallet eksternal * |
 | GET | `/api/v1/exchange/rate` | Mendapatkan kurs real-time terkini |
 | POST | `/api/v1/exchange/swap` | Konversi/tukar antar saldo aset |
 | GET | `/api/v1/transactions` | Riwayat transaksi (dilengkapi pagination & filter) |
+| POST | `/api/v1/auth/2fa/enable` | Menghasilkan secret key & QR URL untuk setup 2FA |
+| POST | `/api/v1/auth/2fa/verify` | Konfirmasi kode OTP pertama untuk mengaktifkan 2FA |
+| POST | `/api/v1/auth/2fa/disable` | Menonaktifkan 2FA dengan validasi kode OTP terkini |
+
+> * **Proteksi Keamanan 2FA**:
+> Jika 2FA aktif pada akun Anda, endpoint sensitif bertanda bintang (`*`) wajib menyertakan header tambahan `X-2FA-Code: <6_digit_otp_code>`. Jika tidak dikirimkan, request akan ditolak dengan status HTTP `403 Forbidden`.
 
 ---
 

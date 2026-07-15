@@ -170,7 +170,7 @@ func main() {
 		slog.Warn("Alchemy WS URL placeholder or missing contract addresses; listener disabled")
 	}
 
-	authUC := usecase.NewAuthUsecase(userRepo, walletRepo)
+	authUC := usecase.NewAuthUsecase(userRepo, walletRepo, cryptoEncryptionKeyBase64)
 	transferUC := usecase.NewTransferUsecase(walletRepo, txRepo)
 	walletUC := usecase.NewWalletUsecase(walletRepo, txRepo, midtransClient, priceCache)
 	webhookUC := usecase.NewWebhookUsecase(txRepo, midtransClient)
@@ -237,28 +237,32 @@ func main() {
 			auth.POST("/login", authHandler.Login)
 			auth.GET("/google", oauthHandler.LoginGoogle)
 			auth.GET("/google/callback", oauthHandler.GoogleCallback)
+			auth.POST("/2fa/login", authHandler.Login2FA)
 		}
 
 		api.POST("/webhooks/midtrans", webhookHandler.HandleMidtrans)
 		api.POST("/webhooks/iris", webhookHandler.HandleIris)
 
-		// Rate Limiter: 10 requests max, 1 token refill / 2s
 		limiter := middleware.IPBasedRateLimiter(10, 1, 2*time.Second)
 
 		api.Use(middleware.JWTAuth(jwtSecret))
 		{
-			api.POST("/transfer", limiter, transferHandler.Transfer)
+			api.POST("/transfer", limiter, middleware.Require2FAIfEnabled(authUC), transferHandler.Transfer)
 			api.POST("/topup", walletHandler.TopUp)
 			api.GET("/transactions", walletHandler.GetTransactionHistory)
 			api.GET("/wallet/dashboard", walletHandler.GetDashboard)
 
+			api.POST("/auth/2fa/enable", authHandler.Enable2FA)
+			api.POST("/auth/2fa/verify", authHandler.Verify2FA)
+			api.POST("/auth/2fa/disable", authHandler.Disable2FA)
+
 			api.GET("/crypto/address", cryptoHandler.GetDepositAddress)
-			api.POST("/crypto/withdraw", limiter, cryptoHandler.WithdrawCrypto)
+			api.POST("/crypto/withdraw", limiter, middleware.Require2FAIfEnabled(authUC), cryptoHandler.WithdrawCrypto)
 
 			api.GET("/exchange/rate", exchangeHandler.GetRate)
 			api.POST("/exchange/swap", limiter, exchangeHandler.Swap)
 
-			api.POST("/fiat/withdraw", limiter, fiatHandler.WithdrawFiat)
+			api.POST("/fiat/withdraw", limiter, middleware.Require2FAIfEnabled(authUC), fiatHandler.WithdrawFiat)
 		}
 	}
 
