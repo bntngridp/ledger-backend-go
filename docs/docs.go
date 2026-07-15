@@ -18,6 +18,83 @@ const docTemplate = `{
     "host": "{{.Host}}",
     "basePath": "{{.BasePath}}",
     "paths": {
+        "/auth/google": {
+            "get": {
+                "description": "Redirects the client to Google's OAuth2 consent page.",
+                "tags": [
+                    "auth"
+                ],
+                "summary": "Redirect to Google Login",
+                "responses": {
+                    "307": {
+                        "description": "Temporary Redirect to Google Consent Page"
+                    }
+                }
+            }
+        },
+        "/auth/google/callback": {
+            "get": {
+                "description": "Handles the authorization code returned by Google, exchanges it for an access token, fetches the user's profile, and issues a JWT token.",
+                "tags": [
+                    "auth"
+                ],
+                "summary": "Google Login Callback",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "OAuth state parameter",
+                        "name": "state",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "OAuth authorization code",
+                        "name": "code",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Google login successful",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/domain.SuccessResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/domain.LoginResponse"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid oauth state or missing authorization code",
+                        "schema": {
+                            "$ref": "#/definitions/domain.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "$ref": "#/definitions/domain.ErrorResponse"
+                        }
+                    },
+                    "502": {
+                        "description": "Bad gateway: failed to retrieve Google profile",
+                        "schema": {
+                            "$ref": "#/definitions/domain.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/auth/login": {
             "post": {
                 "description": "Authenticates a user and returns a JWT token valid for 24 hours.",
@@ -146,6 +223,355 @@ const docTemplate = `{
                 }
             }
         },
+        "/crypto/address": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns the authenticated user's EVM deposit address for the specified network and asset. Generates a new keypair if not exists.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "crypto"
+                ],
+                "summary": "Get or generate crypto deposit address",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Network name (polygon_amoy, sepolia)",
+                        "name": "network",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Asset symbol (USDT, USDC)",
+                        "name": "asset_symbol",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Address retrieved successfully",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/domain.SuccessResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/domain.DepositAddressResponse"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid query parameters",
+                        "schema": {
+                            "$ref": "#/definitions/domain.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/domain.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "$ref": "#/definitions/domain.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/crypto/withdraw": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Initiates an on-chain withdrawal of crypto to the specified destination address.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "crypto"
+                ],
+                "summary": "Withdraw crypto to external address",
+                "parameters": [
+                    {
+                        "description": "Withdrawal payload",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/domain.CryptoWithdrawRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Withdrawal initiated",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/domain.SuccessResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/domain.CryptoWithdrawResponse"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid input or address",
+                        "schema": {
+                            "$ref": "#/definitions/domain.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/domain.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Insufficient balance",
+                        "schema": {
+                            "$ref": "#/definitions/domain.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "$ref": "#/definitions/domain.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/exchange/rate": {
+            "get": {
+                "description": "Returns the current exchange rate for a given pair (e.g. USDT_IDR, USDC_IDR) from Binance API.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "exchange"
+                ],
+                "summary": "Get exchange rate",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Pair symbol (e.g. USDT_IDR, USDC_IDR)",
+                        "name": "pair",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Exchange rate retrieved",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/domain.SuccessResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/domain.ExchangeRateResponse"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid query parameters",
+                        "schema": {
+                            "$ref": "#/definitions/domain.ErrorResponse"
+                        }
+                    },
+                    "502": {
+                        "description": "External Binance service failure",
+                        "schema": {
+                            "$ref": "#/definitions/domain.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/exchange/swap": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Exchanges a specified amount of one asset to another asset internally. Applies a 0.5% platform fee.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "exchange"
+                ],
+                "summary": "Swap assets (Fiat/Crypto)",
+                "parameters": [
+                    {
+                        "description": "Swap payload",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/domain.SwapRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Swap transaction completed",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/domain.SuccessResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/domain.SwapResponse"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid input, same asset swap",
+                        "schema": {
+                            "$ref": "#/definitions/domain.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/domain.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Insufficient balance",
+                        "schema": {
+                            "$ref": "#/definitions/domain.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "$ref": "#/definitions/domain.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/fiat/withdraw": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Initiates a withdrawal of Rupiah (IDR) to an external bank account via Midtrans Iris Sandbox. Deducts Rp 2.500 admin fee.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "fiat"
+                ],
+                "summary": "Withdraw Rupiah to bank account",
+                "parameters": [
+                    {
+                        "description": "Withdrawal payload",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/domain.WithdrawFiatRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Withdrawal initiated",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/domain.SuccessResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/domain.WithdrawFiatResponse"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid input, below minimum withdrawal",
+                        "schema": {
+                            "$ref": "#/definitions/domain.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/domain.ErrorResponse"
+                        }
+                    },
+                    "422": {
+                        "description": "Insufficient balance",
+                        "schema": {
+                            "$ref": "#/definitions/domain.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "$ref": "#/definitions/domain.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/topup": {
             "post": {
                 "security": [
@@ -195,7 +621,7 @@ const docTemplate = `{
                         }
                     },
                     "400": {
-                        "description": "Invalid request, amount must be greater than 0, or wallet not found",
+                        "description": "Invalid request",
                         "schema": {
                             "$ref": "#/definitions/domain.ErrorResponse"
                         }
@@ -222,7 +648,7 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Returns the authenticated user's transaction history (incoming and outgoing), ordered by most recent first.",
+                "description": "Returns the authenticated user's transaction history with pagination and filters.",
                 "produces": [
                     "application/json"
                 ],
@@ -230,6 +656,32 @@ const docTemplate = `{
                     "wallet"
                 ],
                 "summary": "Get transaction history",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Page number",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Items per page",
+                        "name": "per_page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by asset (e.g. IDR, USDT, USDC)",
+                        "name": "asset",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by transaction type",
+                        "name": "type",
+                        "in": "query"
+                    }
+                ],
                 "responses": {
                     "200": {
                         "description": "Transaction history retrieved",
@@ -242,10 +694,7 @@ const docTemplate = `{
                                     "type": "object",
                                     "properties": {
                                         "data": {
-                                            "type": "array",
-                                            "items": {
-                                                "$ref": "#/definitions/domain.TransactionHistoryItem"
-                                            }
+                                            "$ref": "#/definitions/domain.TransactionHistoryResponse"
                                         }
                                     }
                                 }
@@ -329,9 +778,234 @@ const docTemplate = `{
                     }
                 }
             }
+        },
+        "/wallet/dashboard": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Returns the authenticated user's wallet balances (IDR, USDT, USDC) and estimated total IDR value.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "wallet"
+                ],
+                "summary": "Get wallet dashboard",
+                "responses": {
+                    "200": {
+                        "description": "Dashboard data retrieved",
+                        "schema": {
+                            "allOf": [
+                                {
+                                    "$ref": "#/definitions/domain.SuccessResponse"
+                                },
+                                {
+                                    "type": "object",
+                                    "properties": {
+                                        "data": {
+                                            "$ref": "#/definitions/domain.DashboardResponse"
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/domain.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "$ref": "#/definitions/domain.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/webhooks/iris": {
+            "post": {
+                "description": "Endpoint for Midtrans Iris disbursement notification webhook. Updates payout transaction status to success or failed (and refunds balance upon failure).",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "webhooks"
+                ],
+                "summary": "Handle Midtrans Iris Callback Notification",
+                "parameters": [
+                    {
+                        "description": "Midtrans Iris Notification Payload",
+                        "name": "payload",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/domain.IrisCallbackItem"
+                            }
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Notification processed successfully",
+                        "schema": {
+                            "$ref": "#/definitions/domain.SuccessResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid payload",
+                        "schema": {
+                            "$ref": "#/definitions/domain.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "$ref": "#/definitions/domain.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/webhooks/midtrans": {
+            "post": {
+                "description": "Endpoint for Midtrans payment gateway notification webhook. Validates SHA-512 signature, processes billing status changes, and settles transaction balances.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "webhooks"
+                ],
+                "summary": "Handle Midtrans Webhook Notification",
+                "parameters": [
+                    {
+                        "description": "Midtrans Notification Payload",
+                        "name": "payload",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Notification processed successfully",
+                        "schema": {
+                            "$ref": "#/definitions/domain.SuccessResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid payload or signature validation failed",
+                        "schema": {
+                            "$ref": "#/definitions/domain.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "$ref": "#/definitions/domain.ErrorResponse"
+                        }
+                    }
+                }
+            }
         }
     },
     "definitions": {
+        "domain.CryptoWithdrawRequest": {
+            "type": "object",
+            "required": [
+                "amount",
+                "asset_symbol",
+                "network",
+                "to_address"
+            ],
+            "properties": {
+                "amount": {
+                    "type": "number"
+                },
+                "asset_symbol": {
+                    "type": "string"
+                },
+                "network": {
+                    "type": "string"
+                },
+                "notes": {
+                    "type": "string"
+                },
+                "to_address": {
+                    "type": "string"
+                }
+            }
+        },
+        "domain.CryptoWithdrawResponse": {
+            "type": "object",
+            "properties": {
+                "amount": {
+                    "type": "number"
+                },
+                "asset_symbol": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "to_address": {
+                    "type": "string"
+                },
+                "transaction_id": {
+                    "type": "string"
+                },
+                "tx_hash": {
+                    "type": "string"
+                }
+            }
+        },
+        "domain.DashboardResponse": {
+            "type": "object",
+            "properties": {
+                "balances": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/domain.WalletBalanceDTO"
+                    }
+                },
+                "estimated_total_idr": {
+                    "type": "number"
+                },
+                "wallet_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "domain.DepositAddressResponse": {
+            "type": "object",
+            "properties": {
+                "address": {
+                    "type": "string"
+                },
+                "asset_symbol": {
+                    "type": "string"
+                },
+                "network": {
+                    "type": "string"
+                }
+            }
+        },
         "domain.ErrorResponse": {
             "type": "object",
             "properties": {
@@ -340,6 +1014,56 @@ const docTemplate = `{
                 },
                 "status": {
                     "type": "integer"
+                }
+            }
+        },
+        "domain.ExchangeRateResponse": {
+            "type": "object",
+            "properties": {
+                "last_updated": {
+                    "type": "string"
+                },
+                "pair": {
+                    "type": "string"
+                },
+                "rate": {
+                    "type": "number"
+                }
+            }
+        },
+        "domain.IrisCallbackItem": {
+            "type": "object",
+            "properties": {
+                "amount": {
+                    "type": "string"
+                },
+                "beneficiary_account": {
+                    "type": "string"
+                },
+                "beneficiary_bank": {
+                    "type": "string"
+                },
+                "beneficiary_name": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "error_message": {
+                    "type": "string"
+                },
+                "payout_id": {
+                    "type": "integer"
+                },
+                "reference_no": {
+                    "type": "string"
+                },
+                "status": {
+                    "description": "\"completed\" or \"failed\"",
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
                 }
             }
         },
@@ -369,6 +1093,23 @@ const docTemplate = `{
                 }
             }
         },
+        "domain.PaginationMeta": {
+            "type": "object",
+            "properties": {
+                "page": {
+                    "type": "integer"
+                },
+                "per_page": {
+                    "type": "integer"
+                },
+                "total": {
+                    "type": "integer"
+                },
+                "total_pages": {
+                    "type": "integer"
+                }
+            }
+        },
         "domain.RegisterRequest": {
             "type": "object",
             "required": [
@@ -392,8 +1133,11 @@ const docTemplate = `{
         "domain.RegisterResponse": {
             "type": "object",
             "properties": {
-                "balance": {
-                    "type": "integer"
+                "balances": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/domain.WalletBalanceDTO"
+                    }
                 },
                 "email": {
                     "type": "string"
@@ -421,6 +1165,51 @@ const docTemplate = `{
                 }
             }
         },
+        "domain.SwapRequest": {
+            "type": "object",
+            "required": [
+                "amount",
+                "from_asset",
+                "to_asset"
+            ],
+            "properties": {
+                "amount": {
+                    "type": "number"
+                },
+                "from_asset": {
+                    "type": "string"
+                },
+                "to_asset": {
+                    "type": "string"
+                }
+            }
+        },
+        "domain.SwapResponse": {
+            "type": "object",
+            "properties": {
+                "fee_charged": {
+                    "type": "number"
+                },
+                "from_amount": {
+                    "type": "number"
+                },
+                "from_asset": {
+                    "type": "string"
+                },
+                "rate_used": {
+                    "type": "number"
+                },
+                "to_amount": {
+                    "type": "number"
+                },
+                "to_asset": {
+                    "type": "string"
+                },
+                "transaction_id": {
+                    "type": "string"
+                }
+            }
+        },
         "domain.TopUpRequest": {
             "type": "object",
             "required": [
@@ -428,7 +1217,7 @@ const docTemplate = `{
             ],
             "properties": {
                 "amount": {
-                    "type": "integer"
+                    "type": "number"
                 },
                 "notes": {
                     "type": "string"
@@ -439,10 +1228,16 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "amount": {
-                    "type": "integer"
+                    "type": "number"
                 },
-                "new_balance": {
-                    "type": "integer"
+                "asset_symbol": {
+                    "type": "string"
+                },
+                "redirect_url": {
+                    "type": "string"
+                },
+                "snap_token": {
+                    "type": "string"
                 },
                 "transaction_id": {
                     "type": "string"
@@ -456,13 +1251,25 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "amount": {
-                    "type": "integer"
+                    "type": "number"
+                },
+                "asset_symbol": {
+                    "type": "string"
                 },
                 "created_at": {
                     "type": "string"
                 },
                 "destination_wallet_id": {
                     "type": "string"
+                },
+                "fee_charged": {
+                    "type": "number"
+                },
+                "midtrans_order_id": {
+                    "type": "string"
+                },
+                "rate_used": {
+                    "type": "number"
                 },
                 "source_wallet_id": {
                     "type": "string"
@@ -476,8 +1283,25 @@ const docTemplate = `{
                 "transaction_notes": {
                     "type": "string"
                 },
+                "tx_hash": {
+                    "type": "string"
+                },
                 "type": {
                     "type": "string"
+                }
+            }
+        },
+        "domain.TransactionHistoryResponse": {
+            "type": "object",
+            "properties": {
+                "meta": {
+                    "$ref": "#/definitions/domain.PaginationMeta"
+                },
+                "transactions": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/domain.TransactionHistoryItem"
+                    }
                 }
             }
         },
@@ -485,16 +1309,83 @@ const docTemplate = `{
             "type": "object",
             "required": [
                 "amount",
+                "asset_symbol",
                 "destination_user_id"
             ],
             "properties": {
                 "amount": {
-                    "type": "integer"
+                    "type": "number"
+                },
+                "asset_symbol": {
+                    "type": "string"
                 },
                 "destination_user_id": {
                     "type": "string"
                 },
                 "notes": {
+                    "type": "string"
+                }
+            }
+        },
+        "domain.WalletBalanceDTO": {
+            "type": "object",
+            "properties": {
+                "asset_symbol": {
+                    "type": "string"
+                },
+                "balance": {
+                    "type": "number"
+                }
+            }
+        },
+        "domain.WithdrawFiatRequest": {
+            "type": "object",
+            "required": [
+                "account_name",
+                "account_number",
+                "amount",
+                "bank_code"
+            ],
+            "properties": {
+                "account_name": {
+                    "type": "string"
+                },
+                "account_number": {
+                    "type": "string"
+                },
+                "amount": {
+                    "type": "number"
+                },
+                "bank_code": {
+                    "type": "string"
+                },
+                "notes": {
+                    "type": "string"
+                }
+            }
+        },
+        "domain.WithdrawFiatResponse": {
+            "type": "object",
+            "properties": {
+                "account_number": {
+                    "type": "string"
+                },
+                "admin_fee": {
+                    "type": "number"
+                },
+                "amount": {
+                    "type": "number"
+                },
+                "bank_code": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "total_deducted": {
+                    "type": "number"
+                },
+                "transaction_id": {
                     "type": "string"
                 }
             }
