@@ -54,7 +54,6 @@ func getEnv(key, fallback string) string {
 }
 
 func main() {
-	// Initialize structured logging (slog) with JSON output
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 	slog.SetDefault(logger)
 
@@ -64,7 +63,7 @@ func main() {
 
 	jwtSecret := os.Getenv("JWT_SECRET")
 	if jwtSecret == "" {
-		slog.Error("JWT_SECRET is required (set in .env or system env)")
+		slog.Error("JWT_SECRET is required")
 		os.Exit(1)
 	}
 	expiryHoursStr := getEnv("JWT_EXPIRY_HOURS", "24")
@@ -74,7 +73,6 @@ func main() {
 	}
 	port := getEnv("PORT", "8080")
 
-	// Midtrans Configuration
 	midtransServerKey := os.Getenv("MIDTRANS_SERVER_KEY")
 	if midtransServerKey == "" {
 		slog.Error("MIDTRANS_SERVER_KEY is required")
@@ -82,27 +80,22 @@ func main() {
 	}
 	midtransIsProduction := os.Getenv("MIDTRANS_IS_PRODUCTION") == "true"
 
-	// Midtrans Iris Configuration
 	irisAPIKey := os.Getenv("MIDTRANS_IRIS_API_KEY")
 	irisBaseURL := getEnv("MIDTRANS_IRIS_BASE_URL", "https://app.sandbox.midtrans.com/iris")
 
-	// Crypto Configuration
 	cryptoEncryptionKeyBase64 := os.Getenv("CRYPTO_ENCRYPTION_KEY")
 	if cryptoEncryptionKeyBase64 == "" {
 		slog.Error("CRYPTO_ENCRYPTION_KEY is required")
 		os.Exit(1)
 	}
 
-	// Alchemy Configuration
 	alchemyHTTPURL := os.Getenv("ALCHEMY_HTTP_URL")
 	alchemyWSURL := os.Getenv("ALCHEMY_WS_URL")
 	alchemyNetwork := getEnv("ALCHEMY_NETWORK", "polygon-amoy")
 
-	// Smart Contract Addresses
 	usdtContractAddress := os.Getenv("USDT_CONTRACT_ADDRESS")
 	usdcContractAddress := os.Getenv("USDC_CONTRACT_ADDRESS")
 
-	// Price Cache Configuration
 	binanceAPIURL := getEnv("BINANCE_API_URL", "https://api.binance.com/api/v3")
 	usdIDRRateStr := getEnv("USD_IDR_RATE", "16200")
 	usdIDRRate, err := decimal.NewFromString(usdIDRRateStr)
@@ -110,7 +103,6 @@ func main() {
 		usdIDRRate = decimal.NewFromInt(16200)
 	}
 
-	// Swap Fee Configuration
 	swapFeeStr := getEnv("SWAP_FEE_PERCENTAGE", "0.005")
 	swapFee, err := decimal.NewFromString(swapFeeStr)
 	if err != nil {
@@ -138,19 +130,16 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Initialize Clients
 	midtransClient := midtrans.NewMidtransClient(midtransServerKey, midtransIsProduction)
 	irisClient := midtrans.NewIrisClient(irisAPIKey, irisBaseURL)
 	alchemyClient := blockchain.NewAlchemyClient(alchemyHTTPURL, alchemyWSURL)
 	priceCache := price.NewPriceCache(binanceAPIURL, usdIDRRate)
 
-	// Initialize Repositories
 	userRepo := repo.NewUserRepository(db)
 	walletRepo := repo.NewWalletRepository(db)
 	txRepo := repo.NewTransactionRepository(db)
 	cryptoAddrRepo := repo.NewCryptoAddressRepository(db)
 
-	// Initialize ERC-20 Listener (Goroutine)
 	contractAssets := make(map[string]string)
 	contractDecimals := make(map[string]int)
 	if usdtContractAddress != "" {
@@ -172,17 +161,15 @@ func main() {
 	}
 	erc20Listener := blockchain.NewERC20Listener(listenerDeps)
 
-	// Start On-chain event listener in background context
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	if alchemyWSURL != "" && !strings.Contains(alchemyWSURL, "your-api-key") && len(contractAssets) > 0 {
 		go erc20Listener.Start(ctx)
 	} else {
-		slog.Warn("Alchemy WebSocket URL is placeholder or missing contract addresses, On-chain listener is disabled")
+		slog.Warn("Alchemy WS URL placeholder or missing contract addresses; listener disabled")
 	}
 
-	// Initialize Usecases
 	authUC := usecase.NewAuthUsecase(userRepo, walletRepo)
 	transferUC := usecase.NewTransferUsecase(walletRepo, txRepo)
 	walletUC := usecase.NewWalletUsecase(walletRepo, txRepo, midtransClient, priceCache)
@@ -212,7 +199,6 @@ func main() {
 	exchangeUC := usecase.NewExchangeUsecase(walletRepo, txRepo, priceCache, swapFee)
 	fiatUC := usecase.NewFiatUsecase(walletRepo, txRepo, irisClient)
 
-	// Initialize Handlers
 	authHandler := delivery.NewAuthHandler(authUC, jwtSecret, expiryHours)
 	transferHandler := delivery.NewTransferHandler(transferUC)
 	walletHandler := delivery.NewWalletHandler(walletUC)
@@ -253,11 +239,10 @@ func main() {
 			auth.GET("/google/callback", oauthHandler.GoogleCallback)
 		}
 
-		// Public Webhook route for Midtrans notification callbacks
 		api.POST("/webhooks/midtrans", webhookHandler.HandleMidtrans)
 		api.POST("/webhooks/iris", webhookHandler.HandleIris)
 
-		// Rate Limiter: 10 requests max, refills 1 token every 2 seconds (5 requests/10s rate)
+		// Rate Limiter: 10 requests max, 1 token refill / 2s
 		limiter := middleware.IPBasedRateLimiter(10, 1, 2*time.Second)
 
 		api.Use(middleware.JWTAuth(jwtSecret))
@@ -267,15 +252,12 @@ func main() {
 			api.GET("/transactions", walletHandler.GetTransactionHistory)
 			api.GET("/wallet/dashboard", walletHandler.GetDashboard)
 
-			// Crypto routes
 			api.GET("/crypto/address", cryptoHandler.GetDepositAddress)
 			api.POST("/crypto/withdraw", limiter, cryptoHandler.WithdrawCrypto)
 
-			// Exchange routes
 			api.GET("/exchange/rate", exchangeHandler.GetRate)
 			api.POST("/exchange/swap", limiter, exchangeHandler.Swap)
 
-			// Fiat withdrawal route
 			api.POST("/fiat/withdraw", limiter, fiatHandler.WithdrawFiat)
 		}
 	}
@@ -327,7 +309,6 @@ func main() {
 	<-quit
 	slog.Info("shutting down server...")
 
-	// Cancel background context to stop on-chain listener gracefully
 	cancel()
 
 	ctxShutdown, cancelShutdown := context.WithTimeout(context.Background(), 5*time.Second)

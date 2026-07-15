@@ -3,7 +3,7 @@ package usecase
 import (
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"strings"
 
 	"github.com/bntngridp/ledger-backend/internal/domain"
@@ -50,13 +50,11 @@ func (uc *webhookUsecase) ProcessMidtransNotification(payload map[string]interfa
 		return errors.New("missing or invalid signature_key")
 	}
 
-	// 1. Verify signature
 	if !uc.midtransClient.VerifySignature(orderID, statusCode, grossAmount, signatureKey) {
-		log.Printf("invalid signature key received for order: %s", orderID)
+		slog.Warn("invalid midtrans signature received", "order_id", orderID)
 		return errors.New("invalid signature key")
 	}
 
-	// 2. Fetch transaction
 	txRecord, err := uc.txRepo.GetTransactionByOrderID(orderID)
 	if err != nil {
 		return fmt.Errorf("failed to fetch transaction: %w", err)
@@ -65,13 +63,11 @@ func (uc *webhookUsecase) ProcessMidtransNotification(payload map[string]interfa
 		return fmt.Errorf("transaction not found for order: %s", orderID)
 	}
 
-	// 3. Ensure transaction is pending
 	if txRecord.Status != "pending" {
-		log.Printf("transaction %s has already been processed with status: %s", txRecord.TransactionID, txRecord.Status)
-		return nil // Return nil so we don't cause duplicate request errors to Midtrans
+		slog.Info("transaction already processed", "tx_id", txRecord.TransactionID, "status", txRecord.Status)
+		return nil
 	}
 
-	// 4. Parse amount
 	amt, err := decimal.NewFromString(grossAmount)
 	if err != nil {
 		return fmt.Errorf("failed to parse gross_amount: %w", err)
@@ -80,9 +76,8 @@ func (uc *webhookUsecase) ProcessMidtransNotification(payload map[string]interfa
 	txStatus, _ := payload["transaction_status"].(string)
 	fraudStatus, _ := payload["fraud_status"].(string)
 
-	log.Printf("processing midtrans transaction %s: status=%s, fraud=%s", orderID, txStatus, fraudStatus)
+	slog.Info("processing midtrans transaction status", "order_id", orderID, "tx_status", txStatus, "fraud_status", fraudStatus)
 
-	// 5. Handle payment status
 	switch txStatus {
 	case "capture":
 		if fraudStatus == "accept" {
@@ -94,7 +89,7 @@ func (uc *webhookUsecase) ProcessMidtransNotification(payload map[string]interfa
 	case "deny", "cancel", "expire":
 		return uc.failTransaction(txRecord, "Payment "+txStatus)
 	default:
-		log.Printf("unhandled transaction status: %s", txStatus)
+		slog.Warn("unhandled transaction status", "tx_status", txStatus)
 		return nil
 	}
 }
@@ -103,12 +98,12 @@ func (uc *webhookUsecase) settleTransaction(txRecord *domain.Transaction, amount
 	if txRecord.DestinationWalletID == nil {
 		return errors.New("destination wallet is nil")
 	}
-	log.Printf("settling transaction %s for wallet %s with amount %s", txRecord.TransactionID, txRecord.DestinationWalletID.String(), amount.String())
+	slog.Info("settling transaction", "tx_id", txRecord.TransactionID, "wallet_id", txRecord.DestinationWalletID, "amount", amount.String())
 	return uc.txRepo.SettleTopUpTx(txRecord.TransactionID, *txRecord.DestinationWalletID, amount)
 }
 
 func (uc *webhookUsecase) failTransaction(txRecord *domain.Transaction, reason string) error {
-	log.Printf("failing transaction %s. Reason: %s", txRecord.TransactionID, reason)
+	slog.Info("failing transaction", "tx_id", txRecord.TransactionID, "reason", reason)
 	return uc.txRepo.UpdateTransactionStatus(txRecord.TransactionID, "failed", reason)
 }
 
@@ -116,12 +111,12 @@ func (uc *webhookUsecase) ProcessIrisNotification(payload []domain.IrisCallbackI
 	for _, item := range payload {
 		txUUID, err := uuid.Parse(item.ReferenceNo)
 		if err != nil {
-			log.Printf("[Iris Webhook] invalid reference_no UUID: %s", item.ReferenceNo)
+			slog.Warn("invalid reference_no UUID in Iris callback", "reference_no", item.ReferenceNo)
 			continue
 		}
 
 		status := strings.ToLower(item.Status)
-		log.Printf("[Iris Webhook] processing item: ref=%s, status=%s", item.ReferenceNo, status)
+		slog.Info("processing iris callback item", "reference_no", item.ReferenceNo, "status", status)
 
 		if status == "completed" {
 			err = uc.txRepo.UpdateTransactionStatus(txUUID, "success", "")
@@ -132,15 +127,14 @@ func (uc *webhookUsecase) ProcessIrisNotification(payload []domain.IrisCallbackI
 			}
 			err = uc.txRepo.RejectWithdrawFiatTx(txUUID, errMsg)
 		} else {
-			log.Printf("[Iris Webhook] unhandled status: %s for reference_no: %s", item.Status, item.ReferenceNo)
+			slog.Warn("unhandled status in Iris callback", "status", item.Status, "reference_no", item.ReferenceNo)
 			continue
 		}
 
 		if err != nil {
-			log.Printf("[Iris Webhook] failed to process item %s: %v", item.ReferenceNo, err)
+			slog.Error("failed to process Iris callback item", "reference_no", item.ReferenceNo, "error", err)
 			return err
 		}
 	}
 	return nil
 }
-

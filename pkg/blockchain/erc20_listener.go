@@ -1,5 +1,3 @@
-// Package blockchain provides the On-Chain ERC-20 listener — a background goroutine that
-// monitors ERC-20 Transfer events on a given network and credits user balances automatically.
 package blockchain
 
 import (
@@ -21,30 +19,25 @@ import (
 )
 
 const (
-	minConfirmations = 3  // Minimum block confirmations before crediting a deposit
-	maxBackoffSec    = 60 // Maximum reconnect delay (seconds)
+	minConfirmations = 3
+	maxBackoffSec    = 60
 )
 
-// ListenerDeps groups all dependencies required by the ERC20Listener.
 type ListenerDeps struct {
-	AlchemyClient      *AlchemyClient
-	CryptoAddressRepo  domain.CryptoAddressRepository
-	TransactionRepo    domain.TransactionRepository
-	// contractAddress -> assetSymbol, e.g., "0x..." -> "USDT"
-	ContractAssets     map[string]string
-	// contractAddress -> tokenDecimals, e.g., "0x..." -> 6
-	ContractDecimals   map[string]int
-	Network            string
+	AlchemyClient     *AlchemyClient
+	CryptoAddressRepo domain.CryptoAddressRepository
+	TransactionRepo   domain.TransactionRepository
+	ContractAssets    map[string]string
+	ContractDecimals  map[string]int
+	Network           string
 }
 
-// ERC20Listener monitors ERC-20 Transfer events and credits user deposits.
 type ERC20Listener struct {
-	deps        ListenerDeps
-	watchList   map[string]*domain.CryptoAddress // address -> CryptoAddress
-	watchMu     sync.RWMutex
+	deps      ListenerDeps
+	watchList map[string]*domain.CryptoAddress
+	watchMu   sync.RWMutex
 }
 
-// NewERC20Listener creates a new listener instance and pre-loads the address watch list.
 func NewERC20Listener(deps ListenerDeps) *ERC20Listener {
 	return &ERC20Listener{
 		deps:      deps,
@@ -52,8 +45,7 @@ func NewERC20Listener(deps ListenerDeps) *ERC20Listener {
 	}
 }
 
-// Start launches the listener in a blocking loop with exponential backoff on connection failures.
-// It should be called in a goroutine: go listener.Start(ctx)
+// Start spawns the listener loop, utilizing exponential backoff on reconnection failures.
 func (l *ERC20Listener) Start(ctx context.Context) {
 	slog.Info("[ERC20Listener] Starting", "network", l.deps.Network)
 	backoff := 1
@@ -77,7 +69,6 @@ func (l *ERC20Listener) Start(ctx context.Context) {
 				return
 			case <-time.After(time.Duration(backoff) * time.Second):
 			}
-			// Exponential backoff capped at maxBackoffSec
 			backoff = int(math.Min(float64(backoff*2), float64(maxBackoffSec)))
 		} else {
 			backoff = 1
@@ -85,7 +76,6 @@ func (l *ERC20Listener) Start(ctx context.Context) {
 	}
 }
 
-// refreshWatchList loads all known deposit addresses from the database.
 func (l *ERC20Listener) refreshWatchList(ctx context.Context) error {
 	addresses, err := l.deps.CryptoAddressRepo.GetAllAddresses(l.deps.Network)
 	if err != nil {
@@ -102,16 +92,12 @@ func (l *ERC20Listener) refreshWatchList(ctx context.Context) error {
 	return nil
 }
 
-// AddToWatchList adds a new deposit address to the in-memory watch list.
-// This is called when a user generates a new deposit address so the listener
-// picks it up without needing a full restart.
 func (l *ERC20Listener) AddToWatchList(addr *domain.CryptoAddress) {
 	l.watchMu.Lock()
 	defer l.watchMu.Unlock()
 	l.watchList[strings.ToLower(addr.Address)] = addr
 }
 
-// listen connects to the WebSocket and processes incoming Transfer events.
 func (l *ERC20Listener) listen(ctx context.Context) error {
 	contractAddresses := make([]common.Address, 0, len(l.deps.ContractAssets))
 	for addrStr := range l.deps.ContractAssets {
@@ -134,17 +120,14 @@ func (l *ERC20Listener) listen(ctx context.Context) error {
 		select {
 		case <-ctx.Done():
 			return nil
-
 		case err := <-sub.Err():
 			return fmt.Errorf("subscription error: %w", err)
-
 		case vLog := <-logsChan:
 			l.handleLog(ctx, vLog)
 		}
 	}
 }
 
-// handleLog decodes a raw log and processes it as a deposit if applicable.
 func (l *ERC20Listener) handleLog(ctx context.Context, vLog types.Log) {
 	// Skip removed logs (chain reorganization)
 	if vLog.Removed {
@@ -156,7 +139,6 @@ func (l *ERC20Listener) handleLog(ctx context.Context, vLog types.Log) {
 		return
 	}
 
-	// Check if 'to' address belongs to one of our users.
 	toAddrLower := strings.ToLower(event.To.Hex())
 	l.watchMu.RLock()
 	cryptoAddr, found := l.watchList[toAddrLower]
@@ -165,7 +147,6 @@ func (l *ERC20Listener) handleLog(ctx context.Context, vLog types.Log) {
 		return
 	}
 
-	// Determine asset symbol from the contract address.
 	contractLower := strings.ToLower(vLog.Address.Hex())
 	assetSymbol, ok := l.deps.ContractAssets[contractLower]
 	if !ok {
@@ -179,13 +160,11 @@ func (l *ERC20Listener) handleLog(ctx context.Context, vLog types.Log) {
 
 	txHash := vLog.TxHash.Hex()
 
-	// Wait for minimum confirmations before crediting.
 	if err := l.waitForConfirmations(ctx, vLog.BlockNumber); err != nil {
 		slog.Error("[ERC20Listener] Confirmation check failed", "tx", txHash, "error", err)
 		return
 	}
 
-	// Convert token value from base units (e.g., 6 decimals for USDT) to decimal.
 	divisor := new(big.Int).Exp(big.NewInt(10), big.NewInt(int64(decimals)), nil)
 	amountDecimal := decimal.NewFromBigInt(event.Value, 0).Div(decimal.NewFromBigInt(divisor, 0))
 
@@ -215,8 +194,7 @@ func (l *ERC20Listener) handleLog(ctx context.Context, vLog types.Log) {
 	)
 }
 
-// waitForConfirmations polls until the current block is at least minConfirmations ahead
-// of the block containing the transaction.
+// waitForConfirmations polls until the current block is at least minConfirmations ahead of txBlock.
 func (l *ERC20Listener) waitForConfirmations(ctx context.Context, txBlock uint64) error {
 	target := txBlock + minConfirmations
 	ticker := time.NewTicker(5 * time.Second)

@@ -13,15 +13,12 @@ type clientLimit struct {
 	tokens   int
 }
 
-// IPBasedRateLimiter limits requests by IP.
-// maxTokens: maximum bucket size
-// refillRate: rate at which tokens are added (per duration)
-// duration: duration for the refill rate (e.g. 1 second, 1 minute)
-func IPBasedRateLimiter(maxTokens int, refillRate int, duration time.Duration) gin.HandlerFunc {
+// IPBasedRateLimiter implements an in-memory token bucket rate limiter per client IP.
+func IPBasedRateLimiter(maxTokens, refillRate int, duration time.Duration) gin.HandlerFunc {
 	var mu sync.Mutex
 	clients := make(map[string]*clientLimit)
 
-	// Clean up old clients periodically to prevent memory leaks in long running services
+	// Clean up inactive clients to prevent memory leaks
 	go func() {
 		for {
 			time.Sleep(10 * time.Minute)
@@ -45,24 +42,20 @@ func IPBasedRateLimiter(maxTokens int, refillRate int, duration time.Duration) g
 		if !exists {
 			clients[ip] = &clientLimit{
 				lastSeen: now,
-				tokens:   maxTokens - 1, // Consume one immediately
+				tokens:   maxTokens - 1,
 			}
 			mu.Unlock()
 			c.Next()
 			return
 		}
 
-		// Calculate token refill based on time elapsed
 		elapsed := now.Sub(client.lastSeen)
-		
-		// If at least one duration has elapsed, refill tokens
 		refills := int(elapsed/duration) * refillRate
 		if refills > 0 {
 			client.tokens += refills
 			if client.tokens > maxTokens {
 				client.tokens = maxTokens
 			}
-			// Update lastSeen to avoid partial duration loss, or simply track precise floats
 			client.lastSeen = now
 		}
 

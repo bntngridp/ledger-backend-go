@@ -11,11 +11,10 @@ import (
 )
 
 const (
-	minFiatWithdrawAmount = 50000 // Minimum Rp 50.000
-	fiatWithdrawAdminFee  = 2500  // Flat Rp 2.500 admin fee
+	minFiatWithdrawAmount = 50000
+	fiatWithdrawAdminFee  = 2500
 )
 
-// FiatUsecase defines the business operations for fiat withdrawals and transfers.
 type FiatUsecase interface {
 	WithdrawFiat(userID uuid.UUID, req domain.WithdrawFiatRequest) (*domain.WithdrawFiatResponse, error)
 }
@@ -26,7 +25,6 @@ type fiatUsecase struct {
 	irisClient *midtrans.IrisClient
 }
 
-// NewFiatUsecase constructs a FiatUsecase.
 func NewFiatUsecase(
 	walletRepo domain.WalletRepository,
 	txRepo domain.TransactionRepository,
@@ -52,7 +50,6 @@ func (uc *fiatUsecase) WithdrawFiat(userID uuid.UUID, req domain.WithdrawFiatReq
 		return nil, domain.ErrNotFound
 	}
 
-	// Verify IDR balance is sufficient (amount + admin fee)
 	bal, err := uc.walletRepo.GetWalletBalance(wallet.WalletID, "IDR")
 	if err != nil {
 		return nil, fmt.Errorf("failed to check balance: %w", err)
@@ -65,12 +62,10 @@ func (uc *fiatUsecase) WithdrawFiat(userID uuid.UUID, req domain.WithdrawFiatReq
 		return nil, domain.ErrInsufficientBalance
 	}
 
-	// Round everything to integer Rupiah
 	req.Amount = req.Amount.Round(0)
 	adminFee = adminFee.Round(0)
 	totalDeducted = totalDeducted.Round(0)
 
-	// Execute database transaction to debit the balance and write transaction
 	notes := fmt.Sprintf("Withdrawal to %s bank account %s. Notes: %s", req.BankCode, req.AccountNumber, req.Notes)
 	txRecord, err := uc.txRepo.ExecuteWithdrawFiatTx(wallet.WalletID, req.Amount, adminFee, "IDR", notes)
 	if err != nil {
@@ -79,7 +74,6 @@ func (uc *fiatUsecase) WithdrawFiat(userID uuid.UUID, req domain.WithdrawFiatReq
 
 	status := "pending"
 
-	// If Midtrans Iris client is configured, send the payout request
 	if uc.irisClient != nil {
 		item := midtrans.IrisPayoutItem{
 			BeneficiaryName:          req.AccountName,
@@ -91,18 +85,16 @@ func (uc *fiatUsecase) WithdrawFiat(userID uuid.UUID, req domain.WithdrawFiatReq
 
 		payoutResp, irisErr := uc.irisClient.CreatePayout(item)
 		if irisErr != nil {
-			// Reject transaction and refund balance
 			_ = uc.txRepo.RejectWithdrawFiatTx(txRecord.TransactionID, "Iris API failure: "+irisErr.Error())
 			return nil, fmt.Errorf("%w: %v", domain.ErrExternalService, irisErr)
 		}
 
 		if len(payoutResp.Payouts) > 0 {
-			// Update status from Iris
 			status = strings.ToLower(payoutResp.Payouts[0].Status)
 			if status == "success" || status == "processed" {
 				status = "success"
 			} else {
-				status = "pending" // Let polling/callback handle final state
+				status = "pending"
 			}
 			_ = uc.txRepo.UpdateTransactionStatus(txRecord.TransactionID, status, "")
 		}

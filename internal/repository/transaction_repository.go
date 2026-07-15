@@ -20,19 +20,14 @@ func NewTransactionRepository(db *gorm.DB) domain.TransactionRepository {
 	return &transactionRepository{db: db}
 }
 
-// ============================================================
-// Fiat / Transfer
-// ============================================================
-
 func (r *transactionRepository) ExecuteTransferTx(senderWalletID, recipientWalletID uuid.UUID, amount decimal.Decimal, assetSymbol, notes string) error {
 	return r.db.Transaction(func(tx *gorm.DB) error {
-		// Lock rows in consistent order (lower UUID first) to prevent deadlocks.
+		// Lock rows in consistent order (lower UUID first) to prevent database deadlocks.
 		first, second := senderWalletID, recipientWalletID
 		if senderWalletID.String() > recipientWalletID.String() {
 			first, second = recipientWalletID, senderWalletID
 		}
 
-		// Lock both balance rows.
 		var firstBal, secondBal domain.WalletBalance
 		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
 			Where("wallet_id = ? AND asset_symbol = ?", first, assetSymbol).First(&firstBal).Error; err != nil {
@@ -153,10 +148,6 @@ func (r *transactionRepository) ExecuteWithdrawFiatTx(walletID uuid.UUID, amount
 	return &transaction, nil
 }
 
-// ============================================================
-// Midtrans / Webhook
-// ============================================================
-
 func (r *transactionRepository) CreatePendingTopUpTx(walletID uuid.UUID, amount decimal.Decimal, assetSymbol, orderID, notes string) (*domain.Transaction, error) {
 	transaction := domain.Transaction{
 		TransactionID:       uuid.New(),
@@ -210,10 +201,6 @@ func (r *transactionRepository) UpdateTransactionStatus(txID uuid.UUID, status, 
 	return r.db.Model(&domain.Transaction{}).Where("transaction_id = ?", txID).Updates(updates).Error
 }
 
-// ============================================================
-// History with Pagination
-// ============================================================
-
 func (r *transactionRepository) GetTransactionsByWalletID(walletID uuid.UUID, page, perPage int, assetFilter, typeFilter string) ([]domain.Transaction, int64, error) {
 	if page < 1 {
 		page = 1
@@ -246,15 +233,10 @@ func (r *transactionRepository) GetTransactionsByWalletID(walletID uuid.UUID, pa
 	return transactions, total, nil
 }
 
-// ============================================================
-// Crypto Deposit (credited by On-Chain Listener)
-// ============================================================
-
 func (r *transactionRepository) CreditCryptoDeposit(walletID uuid.UUID, amount decimal.Decimal, assetSymbol, txHash, notes string) (*domain.Transaction, error) {
 	var transaction domain.Transaction
 
 	err := r.db.Transaction(func(tx *gorm.DB) error {
-		// Idempotency check: reject if this tx_hash has already been processed.
 		var existing domain.Transaction
 		if err := tx.Where("tx_hash = ?", txHash).First(&existing).Error; err == nil {
 			return domain.ErrDuplicateTransaction
@@ -262,7 +244,6 @@ func (r *transactionRepository) CreditCryptoDeposit(walletID uuid.UUID, amount d
 			return fmt.Errorf("failed to check idempotency: %w", err)
 		}
 
-		// Fetch and lock balance; auto-create if this is the first deposit.
 		var current decimal.Decimal
 		var balance domain.WalletBalance
 		err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
@@ -270,7 +251,6 @@ func (r *transactionRepository) CreditCryptoDeposit(walletID uuid.UUID, amount d
 			First(&balance).Error
 
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			// First credit for this asset — create the row.
 			newBalance := domain.WalletBalance{
 				WalletID:    walletID,
 				AssetSymbol: assetSymbol,
@@ -309,10 +289,6 @@ func (r *transactionRepository) CreditCryptoDeposit(walletID uuid.UUID, amount d
 	}
 	return &transaction, nil
 }
-
-// ============================================================
-// Crypto Withdrawal
-// ============================================================
 
 func (r *transactionRepository) CreatePendingCryptoWithdrawTx(walletID uuid.UUID, amount decimal.Decimal, assetSymbol, toAddress, notes string) (*domain.Transaction, error) {
 	var transaction domain.Transaction
@@ -357,15 +333,10 @@ func (r *transactionRepository) UpdateCryptoWithdrawTx(txID uuid.UUID, txHash, s
 	return r.db.Model(&domain.Transaction{}).Where("transaction_id = ?", txID).Updates(updates).Error
 }
 
-// ============================================================
-// Swap
-// ============================================================
-
 func (r *transactionRepository) ExecuteSwapTx(walletID uuid.UUID, fromAsset, toAsset string, fromAmount, toAmount, rateUsed, feeCharged decimal.Decimal) (*domain.Transaction, error) {
 	var transaction domain.Transaction
 
 	err := r.db.Transaction(func(tx *gorm.DB) error {
-		// Lock from-asset balance.
 		fromBal, err := lockBalanceForUpdate(tx, walletID, fromAsset)
 		if err != nil {
 			return err
@@ -374,7 +345,6 @@ func (r *transactionRepository) ExecuteSwapTx(walletID uuid.UUID, fromAsset, toA
 			return domain.ErrInsufficientBalance
 		}
 
-		// Lock to-asset balance.
 		toBal, err := lockBalanceForUpdate(tx, walletID, toAsset)
 		if err != nil {
 			return err
@@ -419,7 +389,6 @@ func (r *transactionRepository) RejectWithdrawCryptoTx(txID uuid.UUID, reason st
 		}
 
 		if txn.Status != "pending" {
-			// Transaction has already been finalized, do nothing (idempotency)
 			return nil
 		}
 
@@ -427,20 +396,17 @@ func (r *transactionRepository) RejectWithdrawCryptoTx(txID uuid.UUID, reason st
 			return errors.New("source wallet ID is nil")
 		}
 
-		// Lock wallet balance
 		current, err := lockBalanceForUpdate(tx, *txn.SourceWalletID, txn.AssetSymbol)
 		if err != nil {
 			return err
 		}
 
-		// Return the funds back to user balance
 		newBalance := current.Add(txn.Amount)
 		if err := tx.Model(&domain.WalletBalance{}).Where("wallet_id = ? AND asset_symbol = ?", *txn.SourceWalletID, txn.AssetSymbol).
 			Updates(map[string]interface{}{"balance": newBalance, "last_updated": time.Now()}).Error; err != nil {
 			return fmt.Errorf("failed to refund balance: %w", err)
 		}
 
-		// Set status to failed
 		notes := txn.TransactionNotes
 		if reason != "" {
 			notes = fmt.Sprintf("%s (Failed: %s)", notes, reason)
@@ -461,7 +427,6 @@ func (r *transactionRepository) RejectWithdrawFiatTx(txID uuid.UUID, reason stri
 		}
 
 		if txn.Status != "pending" {
-			// Transaction has already been finalized, do nothing (idempotency)
 			return nil
 		}
 
@@ -469,27 +434,23 @@ func (r *transactionRepository) RejectWithdrawFiatTx(txID uuid.UUID, reason stri
 			return errors.New("source wallet ID is nil")
 		}
 
-		// Lock wallet balance
 		current, err := lockBalanceForUpdate(tx, *txn.SourceWalletID, txn.AssetSymbol)
 		if err != nil {
 			return err
 		}
 
-		// Total refund is amount + admin fee
 		adminFee := decimal.Zero
 		if txn.FeeCharged != nil {
 			adminFee = *txn.FeeCharged
 		}
 		totalRefund := txn.Amount.Add(adminFee)
 
-		// Return funds
 		newBalance := current.Add(totalRefund)
 		if err := tx.Model(&domain.WalletBalance{}).Where("wallet_id = ? AND asset_symbol = ?", *txn.SourceWalletID, txn.AssetSymbol).
 			Updates(map[string]interface{}{"balance": newBalance, "last_updated": time.Now()}).Error; err != nil {
 			return fmt.Errorf("failed to refund balance: %w", err)
 		}
 
-		// Set status to failed
 		notes := txn.TransactionNotes
 		if reason != "" {
 			notes = fmt.Sprintf("%s (Failed: %s)", notes, reason)
@@ -501,4 +462,3 @@ func (r *transactionRepository) RejectWithdrawFiatTx(txID uuid.UUID, reason stri
 			}).Error
 	})
 }
-
