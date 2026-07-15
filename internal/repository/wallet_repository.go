@@ -18,7 +18,7 @@ func NewWalletRepository(db *gorm.DB) domain.WalletRepository {
 
 func (r *walletRepository) GetWalletByUserID(userID uuid.UUID) (*domain.Wallet, error) {
 	var wallet domain.Wallet
-	if err := r.db.Preload("Balances").Preload("CryptoAddresses").Where("user_id = ?", userID).First(&wallet).Error; err != nil {
+	if err := r.db.Preload("User").Preload("Balances").Preload("CryptoAddresses").Where("user_id = ?", userID).First(&wallet).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, nil
 		}

@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"errors"
 	"fmt"
 	"time"
 
@@ -134,4 +135,75 @@ func (r *transactionRepository) GetTransactionsByWalletID(walletID uuid.UUID) ([
 		return nil, fmt.Errorf("failed to get transactions: %w", err)
 	}
 	return transactions, nil
+}
+
+func (r *transactionRepository) GetTransactionByOrderID(orderID string) (*domain.Transaction, error) {
+	var transaction domain.Transaction
+	if err := r.db.Where("midtrans_order_id = ?", orderID).First(&transaction).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &transaction, nil
+}
+
+func (r *transactionRepository) UpdateTransactionStatus(txID uuid.UUID, status string, notes string) error {
+	updates := map[string]interface{}{
+		"status": status,
+	}
+	if notes != "" {
+		updates["transaction_notes"] = notes
+	}
+	return r.db.Model(&domain.Transaction{}).Where("transaction_id = ?", txID).Updates(updates).Error
+}
+
+func (r *transactionRepository) CreatePendingTopUpTx(walletID uuid.UUID, amount decimal.Decimal, assetSymbol string, orderID string, notes string) (*domain.Transaction, error) {
+	transaction := domain.Transaction{
+		TransactionID:       uuid.New(),
+		SourceWalletID:      nil,
+		DestinationWalletID: &walletID,
+		AssetSymbol:         assetSymbol,
+		Amount:              amount,
+		Type:                "topup",
+		Status:              "pending",
+		MidtransOrderID:     &orderID,
+		TransactionNotes:    notes,
+	}
+	if err := r.db.Create(&transaction).Error; err != nil {
+		return nil, err
+	}
+	return &transaction, nil
+}
+
+func (r *transactionRepository) SettleTopUpTx(transactionID uuid.UUID, walletID uuid.UUID, amount decimal.Decimal) error {
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		// 1. Fetch and lock wallet balance for IDR
+		var currentBalance decimal.Decimal
+		row := tx.Raw(`SELECT balance FROM wallet_balances WHERE wallet_id = ? AND asset_symbol = 'IDR' FOR UPDATE`, walletID).Row()
+		if err := row.Scan(&currentBalance); err != nil {
+			return fmt.Errorf("failed to lock wallet balance: %w", err)
+		}
+
+		newBalance := currentBalance.Add(amount)
+
+		// 2. Update wallet balance
+		if err := tx.Model(&domain.WalletBalance{}).Where("wallet_id = ? AND asset_symbol = 'IDR'", walletID).
+			Updates(map[string]interface{}{
+				"balance":      newBalance,
+				"last_updated": time.Now(),
+			}).Error; err != nil {
+			return fmt.Errorf("failed to update wallet balance: %w", err)
+		}
+
+		// 3. Update transaction status to success
+		if err := tx.Model(&domain.Transaction{}).Where("transaction_id = ?", transactionID).
+			Updates(map[string]interface{}{
+				"status": "success",
+			}).Error; err != nil {
+			return fmt.Errorf("failed to update transaction status: %w", err)
+		}
+
+		return nil
+	})
 }

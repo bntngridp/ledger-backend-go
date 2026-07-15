@@ -7,20 +7,27 @@ import (
 
 	"github.com/bntngridp/ledger-backend/internal/domain"
 	"github.com/google/uuid"
+	"github.com/midtrans/midtrans-go/snap"
 	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 )
 
 func TestTopUp_Success(t *testing.T) {
 	mockWalletRepo := new(MockWalletRepository)
 	mockTxRepo := new(MockTransactionRepository)
-	uc := NewWalletUsecase(mockWalletRepo, mockTxRepo)
+	mockMidtrans := new(MockMidtransClient)
+	uc := NewWalletUsecase(mockWalletRepo, mockTxRepo, mockMidtrans)
 
 	userID := uuid.New()
 	walletID := uuid.New()
 	wallet := &domain.Wallet{
 		WalletID: walletID,
 		UserID:   userID,
+		User: &domain.User{
+			Email:    "test@example.com",
+			Username: "testuser",
+		},
 	}
 
 	expectedTxID := uuid.New()
@@ -29,12 +36,19 @@ func TestTopUp_Success(t *testing.T) {
 		DestinationWalletID: &walletID,
 		Amount:              decimal.NewFromInt(100000),
 		Type:                "topup",
-		Status:              "success",
+		Status:              "pending",
 	}
 
 	mockWalletRepo.On("GetWalletByUserID", userID).Return(wallet, nil)
-	mockTxRepo.On("ExecuteTopUpTx", walletID, decimal.NewFromInt(100000), "IDR", "topup awal").
-		Return(expectedTx, decimal.NewFromInt(150000), nil)
+	mockTxRepo.On("CreatePendingTopUpTx", walletID, decimal.NewFromInt(100000), "IDR", mock.Anything, "topup awal").
+		Return(expectedTx, nil)
+
+	snapResp := &snap.Response{
+		Token:       "snap-token-123",
+		RedirectURL: "https://redirect-url.com",
+	}
+	mockMidtrans.On("CreateSnapTransaction", mock.Anything, decimal.NewFromInt(100000), "test@example.com", "testuser").
+		Return(snapResp, nil)
 
 	resp, err := uc.TopUp(userID, decimal.NewFromInt(100000), "IDR", "topup awal")
 
@@ -43,15 +57,18 @@ func TestTopUp_Success(t *testing.T) {
 	assert.Equal(t, expectedTxID.String(), resp.TransactionID)
 	assert.Equal(t, walletID.String(), resp.WalletID)
 	assert.True(t, decimal.NewFromInt(100000).Equal(resp.Amount))
-	assert.True(t, decimal.NewFromInt(150000).Equal(resp.NewBalance))
+	assert.Equal(t, "snap-token-123", resp.SnapToken)
+	assert.Equal(t, "https://redirect-url.com", resp.RedirectURL)
 	mockWalletRepo.AssertExpectations(t)
 	mockTxRepo.AssertExpectations(t)
+	mockMidtrans.AssertExpectations(t)
 }
 
 func TestTopUp_ZeroAmount(t *testing.T) {
 	mockWalletRepo := new(MockWalletRepository)
 	mockTxRepo := new(MockTransactionRepository)
-	uc := NewWalletUsecase(mockWalletRepo, mockTxRepo)
+	mockMidtrans := new(MockMidtransClient)
+	uc := NewWalletUsecase(mockWalletRepo, mockTxRepo, mockMidtrans)
 
 	userID := uuid.New()
 
@@ -61,13 +78,14 @@ func TestTopUp_ZeroAmount(t *testing.T) {
 	assert.Nil(t, resp)
 	assert.Equal(t, "amount must be greater than 0", err.Error())
 	mockWalletRepo.AssertNotCalled(t, "GetWalletByUserID")
-	mockTxRepo.AssertNotCalled(t, "ExecuteTopUpTx")
+	mockTxRepo.AssertNotCalled(t, "CreatePendingTopUpTx")
 }
 
 func TestTopUp_NegativeAmount(t *testing.T) {
 	mockWalletRepo := new(MockWalletRepository)
 	mockTxRepo := new(MockTransactionRepository)
-	uc := NewWalletUsecase(mockWalletRepo, mockTxRepo)
+	mockMidtrans := new(MockMidtransClient)
+	uc := NewWalletUsecase(mockWalletRepo, mockTxRepo, mockMidtrans)
 
 	userID := uuid.New()
 
@@ -81,7 +99,8 @@ func TestTopUp_NegativeAmount(t *testing.T) {
 func TestTopUp_WalletNotFound(t *testing.T) {
 	mockWalletRepo := new(MockWalletRepository)
 	mockTxRepo := new(MockTransactionRepository)
-	uc := NewWalletUsecase(mockWalletRepo, mockTxRepo)
+	mockMidtrans := new(MockMidtransClient)
+	uc := NewWalletUsecase(mockWalletRepo, mockTxRepo, mockMidtrans)
 
 	userID := uuid.New()
 
@@ -92,13 +111,14 @@ func TestTopUp_WalletNotFound(t *testing.T) {
 	assert.Error(t, err)
 	assert.Nil(t, resp)
 	assert.Equal(t, "wallet not found", err.Error())
-	mockTxRepo.AssertNotCalled(t, "ExecuteTopUpTx")
+	mockTxRepo.AssertNotCalled(t, "CreatePendingTopUpTx")
 }
 
 func TestTopUp_GetWalletError(t *testing.T) {
 	mockWalletRepo := new(MockWalletRepository)
 	mockTxRepo := new(MockTransactionRepository)
-	uc := NewWalletUsecase(mockWalletRepo, mockTxRepo)
+	mockMidtrans := new(MockMidtransClient)
+	uc := NewWalletUsecase(mockWalletRepo, mockTxRepo, mockMidtrans)
 
 	userID := uuid.New()
 
@@ -115,26 +135,28 @@ func TestTopUp_GetWalletError(t *testing.T) {
 func TestTopUp_ExecuteTxError(t *testing.T) {
 	mockWalletRepo := new(MockWalletRepository)
 	mockTxRepo := new(MockTransactionRepository)
-	uc := NewWalletUsecase(mockWalletRepo, mockTxRepo)
+	mockMidtrans := new(MockMidtransClient)
+	uc := NewWalletUsecase(mockWalletRepo, mockTxRepo, mockMidtrans)
 
 	userID := uuid.New()
 	wallet := &domain.Wallet{WalletID: uuid.New(), UserID: userID}
 
 	mockWalletRepo.On("GetWalletByUserID", userID).Return(wallet, nil)
-	mockTxRepo.On("ExecuteTopUpTx", wallet.WalletID, decimal.NewFromInt(100000), "IDR", "test").
-		Return(nil, decimal.Zero, errors.New("failed to lock wallet"))
+	mockTxRepo.On("CreatePendingTopUpTx", wallet.WalletID, decimal.NewFromInt(100000), "IDR", mock.Anything, "test").
+		Return(nil, errors.New("db error"))
 
 	resp, err := uc.TopUp(userID, decimal.NewFromInt(100000), "IDR", "test")
 
 	assert.Error(t, err)
 	assert.Nil(t, resp)
-	assert.Contains(t, err.Error(), "failed to execute top-up")
+	assert.Contains(t, err.Error(), "failed to record pending transaction")
 }
 
 func TestGetTransactionHistory_Success(t *testing.T) {
 	mockWalletRepo := new(MockWalletRepository)
 	mockTxRepo := new(MockTransactionRepository)
-	uc := NewWalletUsecase(mockWalletRepo, mockTxRepo)
+	mockMidtrans := new(MockMidtransClient)
+	uc := NewWalletUsecase(mockWalletRepo, mockTxRepo, mockMidtrans)
 
 	userID := uuid.New()
 	walletID := uuid.New()
@@ -184,7 +206,8 @@ func TestGetTransactionHistory_Success(t *testing.T) {
 func TestGetTransactionHistory_EmptyList(t *testing.T) {
 	mockWalletRepo := new(MockWalletRepository)
 	mockTxRepo := new(MockTransactionRepository)
-	uc := NewWalletUsecase(mockWalletRepo, mockTxRepo)
+	mockMidtrans := new(MockMidtransClient)
+	uc := NewWalletUsecase(mockWalletRepo, mockTxRepo, mockMidtrans)
 
 	userID := uuid.New()
 	walletID := uuid.New()
@@ -203,7 +226,8 @@ func TestGetTransactionHistory_EmptyList(t *testing.T) {
 func TestGetTransactionHistory_WalletNotFound(t *testing.T) {
 	mockWalletRepo := new(MockWalletRepository)
 	mockTxRepo := new(MockTransactionRepository)
-	uc := NewWalletUsecase(mockWalletRepo, mockTxRepo)
+	mockMidtrans := new(MockMidtransClient)
+	uc := NewWalletUsecase(mockWalletRepo, mockTxRepo, mockMidtrans)
 
 	userID := uuid.New()
 
@@ -220,7 +244,8 @@ func TestGetTransactionHistory_WalletNotFound(t *testing.T) {
 func TestGetTransactionHistory_GetWalletError(t *testing.T) {
 	mockWalletRepo := new(MockWalletRepository)
 	mockTxRepo := new(MockTransactionRepository)
-	uc := NewWalletUsecase(mockWalletRepo, mockTxRepo)
+	mockMidtrans := new(MockMidtransClient)
+	uc := NewWalletUsecase(mockWalletRepo, mockTxRepo, mockMidtrans)
 
 	userID := uuid.New()
 
@@ -237,7 +262,8 @@ func TestGetTransactionHistory_GetWalletError(t *testing.T) {
 func TestGetTransactionHistory_RepoError(t *testing.T) {
 	mockWalletRepo := new(MockWalletRepository)
 	mockTxRepo := new(MockTransactionRepository)
-	uc := NewWalletUsecase(mockWalletRepo, mockTxRepo)
+	mockMidtrans := new(MockMidtransClient)
+	uc := NewWalletUsecase(mockWalletRepo, mockTxRepo, mockMidtrans)
 
 	userID := uuid.New()
 	wallet := &domain.Wallet{WalletID: uuid.New(), UserID: userID}
@@ -256,7 +282,8 @@ func TestGetTransactionHistory_RepoError(t *testing.T) {
 func TestGetDashboard_Success(t *testing.T) {
 	mockWalletRepo := new(MockWalletRepository)
 	mockTxRepo := new(MockTransactionRepository)
-	uc := NewWalletUsecase(mockWalletRepo, mockTxRepo)
+	mockMidtrans := new(MockMidtransClient)
+	uc := NewWalletUsecase(mockWalletRepo, mockTxRepo, mockMidtrans)
 
 	userID := uuid.New()
 	walletID := uuid.New()

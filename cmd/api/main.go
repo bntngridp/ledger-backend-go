@@ -27,6 +27,7 @@ import (
 	"github.com/bntngridp/ledger-backend/internal/usecase"
 	"github.com/bntngridp/ledger-backend/pkg/database"
 	"github.com/bntngridp/ledger-backend/pkg/middleware"
+	"github.com/bntngridp/ledger-backend/pkg/midtrans"
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
 	swaggerFiles "github.com/swaggo/files"
@@ -60,6 +61,13 @@ func main() {
 	}
 	port := getEnv("PORT", "8080")
 
+	// Midtrans Configuration
+	midtransServerKey := os.Getenv("MIDTRANS_SERVER_KEY")
+	if midtransServerKey == "" {
+		log.Fatal("MIDTRANS_SERVER_KEY is required")
+	}
+	midtransIsProduction := os.Getenv("MIDTRANS_IS_PRODUCTION") == "true"
+
 	dbCfg := database.Config{
 		Host:     getEnv("DB_HOST", "localhost"),
 		Port:     getEnv("DB_PORT", "5432"),
@@ -79,17 +87,22 @@ func main() {
 		log.Fatalf("migration failed: %v", err)
 	}
 
+	// Initialize Midtrans Client
+	midtransClient := midtrans.NewMidtransClient(midtransServerKey, midtransIsProduction)
+
 	userRepo := repo.NewUserRepository(db)
 	walletRepo := repo.NewWalletRepository(db)
 	txRepo := repo.NewTransactionRepository(db)
 
 	authUC := usecase.NewAuthUsecase(userRepo, walletRepo)
 	transferUC := usecase.NewTransferUsecase(walletRepo, txRepo)
-	walletUC := usecase.NewWalletUsecase(walletRepo, txRepo)
+	walletUC := usecase.NewWalletUsecase(walletRepo, txRepo, midtransClient)
+	webhookUC := usecase.NewWebhookUsecase(txRepo, midtransClient)
 
 	authHandler := delivery.NewAuthHandler(authUC, jwtSecret, expiryHours)
 	transferHandler := delivery.NewTransferHandler(transferUC)
 	walletHandler := delivery.NewWalletHandler(walletUC)
+	webhookHandler := delivery.NewWebhookHandler(webhookUC)
 
 	googleConfig := &oauth2.Config{
 		ClientID:     os.Getenv("GOOGLE_CLIENT_ID"),
@@ -122,6 +135,9 @@ func main() {
 			auth.GET("/google", oauthHandler.LoginGoogle)
 			auth.GET("/google/callback", oauthHandler.GoogleCallback)
 		}
+
+		// Public Webhook route for Midtrans notification callbacks
+		api.POST("/webhooks/midtrans", webhookHandler.HandleMidtrans)
 
 		api.Use(middleware.JWTAuth(jwtSecret))
 		{

@@ -3,6 +3,7 @@ package usecase
 import (
 	"github.com/bntngridp/ledger-backend/internal/domain"
 	"github.com/google/uuid"
+	"github.com/midtrans/midtrans-go/snap"
 	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/mock"
 )
@@ -58,6 +59,32 @@ func (m *MockTransactionRepository) GetTransactionsByWalletID(walletID uuid.UUID
 		return nil, args.Error(1)
 	}
 	return args.Get(0).([]domain.Transaction), args.Error(1)
+}
+
+func (m *MockTransactionRepository) GetTransactionByOrderID(orderID string) (*domain.Transaction, error) {
+	args := m.Called(orderID)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*domain.Transaction), args.Error(1)
+}
+
+func (m *MockTransactionRepository) UpdateTransactionStatus(txID uuid.UUID, status string, notes string) error {
+	args := m.Called(txID, status, notes)
+	return args.Error(0)
+}
+
+func (m *MockTransactionRepository) CreatePendingTopUpTx(walletID uuid.UUID, amount decimal.Decimal, assetSymbol string, orderID string, notes string) (*domain.Transaction, error) {
+	args := m.Called(walletID, amount, assetSymbol, orderID, notes)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*domain.Transaction), args.Error(1)
+}
+
+func (m *MockTransactionRepository) SettleTopUpTx(transactionID uuid.UUID, walletID uuid.UUID, amount decimal.Decimal) error {
+	args := m.Called(transactionID, walletID, amount)
+	return args.Error(0)
 }
 
 type MockUserRepository struct {
@@ -131,4 +158,21 @@ func (m *MockCryptoAddressRepository) GetAddressByValue(address string) (*domain
 func (m *MockCryptoAddressRepository) CreateAddress(cryptoAddr *domain.CryptoAddress) error {
 	args := m.Called(cryptoAddr)
 	return args.Error(0)
+}
+
+type MockMidtransClient struct {
+	mock.Mock
+}
+
+func (m *MockMidtransClient) CreateSnapTransaction(orderID string, amount decimal.Decimal, email string, name string) (*snap.Response, error) {
+	args := m.Called(orderID, amount, email, name)
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+	return args.Get(0).(*snap.Response), args.Error(1)
+}
+
+func (m *MockMidtransClient) VerifySignature(orderID, statusCode, grossAmount, receivedSignature string) bool {
+	args := m.Called(orderID, statusCode, grossAmount, receivedSignature)
+	return args.Bool(0)
 }

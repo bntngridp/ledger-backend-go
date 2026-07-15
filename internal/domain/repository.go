@@ -25,6 +25,10 @@ type TransactionRepository interface {
 	ExecuteTransferTx(senderWalletID, recipientWalletID uuid.UUID, amount decimal.Decimal, assetSymbol string, notes string) error
 	ExecuteTopUpTx(walletID uuid.UUID, amount decimal.Decimal, assetSymbol string, notes string) (*Transaction, decimal.Decimal, error)
 	GetTransactionsByWalletID(walletID uuid.UUID) ([]Transaction, error)
+	GetTransactionByOrderID(orderID string) (*Transaction, error)
+	UpdateTransactionStatus(txID uuid.UUID, status string, notes string) error
+	CreatePendingTopUpTx(walletID uuid.UUID, amount decimal.Decimal, assetSymbol string, orderID string, notes string) (*Transaction, error)
+	SettleTopUpTx(transactionID uuid.UUID, walletID uuid.UUID, amount decimal.Decimal) error
 }
 
 type CryptoAddressRepository interface {

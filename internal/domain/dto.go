@@ -63,7 +63,8 @@ type TopUpResponse struct {
 	WalletID      string          `json:"wallet_id"`
 	AssetSymbol   string          `json:"asset_symbol"`
 	Amount        decimal.Decimal `json:"amount"`
-	NewBalance    decimal.Decimal `json:"new_balance"`
+	SnapToken     string          `json:"snap_token,omitempty"`
+	RedirectURL   string          `json:"redirect_url,omitempty"`
 }
 
 type TransactionHistoryItem struct {

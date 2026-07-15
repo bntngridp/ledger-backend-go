@@ -3,8 +3,10 @@ package usecase
 import (
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/bntngridp/ledger-backend/internal/domain"
+	"github.com/bntngridp/ledger-backend/pkg/midtrans"
 	"github.com/google/uuid"
 	"github.com/shopspring/decimal"
 )
@@ -16,14 +18,16 @@ type WalletUsecase interface {
 }
 
 type walletUsecase struct {
-	walletRepo domain.WalletRepository
-	txRepo     domain.TransactionRepository
+	walletRepo     domain.WalletRepository
+	txRepo         domain.TransactionRepository
+	midtransClient midtrans.Client
 }
 
-func NewWalletUsecase(walletRepo domain.WalletRepository, txRepo domain.TransactionRepository) WalletUsecase {
+func NewWalletUsecase(walletRepo domain.WalletRepository, txRepo domain.TransactionRepository, midtransClient midtrans.Client) WalletUsecase {
 	return &walletUsecase{
-		walletRepo: walletRepo,
-		txRepo:     txRepo,
+		walletRepo:     walletRepo,
+		txRepo:         txRepo,
+		midtransClient: midtransClient,
 	}
 }
 
@@ -40,17 +44,38 @@ func (uc *walletUsecase) TopUp(userID uuid.UUID, amount decimal.Decimal, assetSy
 		return nil, errors.New("wallet not found")
 	}
 
-	tx, newBalance, err := uc.txRepo.ExecuteTopUpTx(wallet.WalletID, amount, assetSymbol, notes)
+	// Generate a unique Midtrans Order ID
+	orderID := fmt.Sprintf("TOPUP-IDR-%s-%d", wallet.WalletID.String()[:8], time.Now().UnixNano())
+
+	// Create pending transaction in database
+	txRecord, err := uc.txRepo.CreatePendingTopUpTx(wallet.WalletID, amount, assetSymbol, orderID, notes)
 	if err != nil {
-		return nil, fmt.Errorf("failed to execute top-up: %w", err)
+		return nil, fmt.Errorf("failed to record pending transaction: %w", err)
+	}
+
+	// Fetch user details for Midtrans
+	email := "user@example.com"
+	name := "User"
+	if wallet.User != nil {
+		email = wallet.User.Email
+		name = wallet.User.Username
+	}
+
+	// Initiate Snap Transaction
+	snapResp, err := uc.midtransClient.CreateSnapTransaction(orderID, amount, email, name)
+	if err != nil {
+		// Update transaction status to failed
+		_ = uc.txRepo.UpdateTransactionStatus(txRecord.TransactionID, "failed", "Midtrans charge failed: "+err.Error())
+		return nil, fmt.Errorf("failed to initiate Midtrans Snap: %w", err)
 	}
 
 	return &domain.TopUpResponse{
-		TransactionID: tx.TransactionID.String(),
+		TransactionID: txRecord.TransactionID.String(),
 		WalletID:      wallet.WalletID.String(),
 		AssetSymbol:   assetSymbol,
 		Amount:        amount,
-		NewBalance:    newBalance,
+		SnapToken:     snapResp.Token,
+		RedirectURL:   snapResp.RedirectURL,
 	}, nil
 }
 
