@@ -65,3 +65,14 @@ type TransactionHistoryItem struct {
 	TransactionNotes    string    `json:"transaction_notes"`
 	CreatedAt           time.Time `json:"created_at"`
 }
+
+type GoogleUserProfile struct {
+	ID            string `json:"id"`
+	Email         string `json:"email"`
+	VerifiedEmail bool   `json:"verified_email"`
+	Name          string `json:"name"`
+	GivenName     string `json:"given_name"`
+	FamilyName    string `json:"family_name"`
+	Picture       string `json:"picture"`
+	Locale        string `json:"locale"`
+}

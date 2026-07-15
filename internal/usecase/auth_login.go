@@ -18,7 +18,11 @@ func (uc *authUsecase) Login(email, password, jwtSecret string, expiryHours int)
 		return nil, errors.New("invalid email or password")
 	}
 
-	if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(password)); err != nil {
+	if user.Password == nil {
+		return nil, errors.New("invalid email or password") // or "please login with google" but standard security is to not leak auth type
+	}
+
+	if err := bcrypt.CompareHashAndPassword([]byte(*user.Password), []byte(password)); err != nil {
 		return nil, errors.New("invalid email or password")
 	}
 

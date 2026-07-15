@@ -31,6 +31,8 @@ import (
 	"github.com/joho/godotenv"
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
+	"golang.org/x/oauth2"
+	"golang.org/x/oauth2/google"
 
 	_ "github.com/bntngridp/ledger-backend-go/docs"
 )
@@ -89,6 +91,18 @@ func main() {
 	transferHandler := delivery.NewTransferHandler(transferUC)
 	walletHandler := delivery.NewWalletHandler(walletUC)
 
+	googleConfig := &oauth2.Config{
+		ClientID:     os.Getenv("GOOGLE_CLIENT_ID"),
+		ClientSecret: os.Getenv("GOOGLE_CLIENT_SECRET"),
+		RedirectURL:  os.Getenv("GOOGLE_REDIRECT_URL"),
+		Scopes: []string{
+			"https://www.googleapis.com/auth/userinfo.profile",
+			"https://www.googleapis.com/auth/userinfo.email",
+		},
+		Endpoint: google.Endpoint,
+	}
+	oauthHandler := delivery.NewOAuthHandler(authUC, googleConfig, jwtSecret, expiryHours)
+
 	r := gin.Default()
 
 	r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
@@ -105,6 +119,8 @@ func main() {
 		{
 			auth.POST("/register", authHandler.Register)
 			auth.POST("/login", authHandler.Login)
+			auth.GET("/google", oauthHandler.LoginGoogle)
+			auth.GET("/google/callback", oauthHandler.GoogleCallback)
 		}
 
 		api.Use(middleware.JWTAuth(jwtSecret))

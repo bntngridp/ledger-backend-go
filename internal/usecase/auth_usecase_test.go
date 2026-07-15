@@ -129,8 +129,9 @@ func TestRegister_PasswordIsHashed(t *testing.T) {
 	_, err := uc.Register("budi", "budi@mail.com", "secret123")
 
 	assert.NoError(t, err)
-	assert.NotEqual(t, "secret123", capturedUser.Password, "password must be hashed, not plaintext")
-	err = bcrypt.CompareHashAndPassword([]byte(capturedUser.Password), []byte("secret123"))
+	assert.NotNil(t, capturedUser.Password)
+	assert.NotEqual(t, "secret123", *capturedUser.Password, "password must be hashed, not plaintext")
+	err = bcrypt.CompareHashAndPassword([]byte(*capturedUser.Password), []byte("secret123"))
 	assert.NoError(t, err, "hashed password must match the original")
 }
 
@@ -140,11 +141,12 @@ func TestLogin_Success(t *testing.T) {
 	uc := NewAuthUsecase(mockUserRepo, mockWalletRepo)
 
 	hashed, _ := bcrypt.GenerateFromPassword([]byte("secret123"), bcrypt.DefaultCost)
+	hashedStr := string(hashed)
 	userID := uuid.New()
 	user := &domain.User{
 		UserID:   userID,
 		Email:    "budi@mail.com",
-		Password: string(hashed),
+		Password: &hashedStr,
 	}
 
 	mockUserRepo.On("GetUserByEmail", "budi@mail.com").Return(user, nil)
@@ -188,10 +190,11 @@ func TestLogin_WrongPassword(t *testing.T) {
 	uc := NewAuthUsecase(mockUserRepo, mockWalletRepo)
 
 	hashed, _ := bcrypt.GenerateFromPassword([]byte("secret123"), bcrypt.DefaultCost)
+	hashedStr := string(hashed)
 	user := &domain.User{
 		UserID:   uuid.New(),
 		Email:    "budi@mail.com",
-		Password: string(hashed),
+		Password: &hashedStr,
 	}
 
 	mockUserRepo.On("GetUserByEmail", "budi@mail.com").Return(user, nil)
@@ -224,10 +227,11 @@ func TestLogin_TokenExpiryMatchesConfig(t *testing.T) {
 	uc := NewAuthUsecase(mockUserRepo, mockWalletRepo)
 
 	hashed, _ := bcrypt.GenerateFromPassword([]byte("secret123"), bcrypt.DefaultCost)
+	hashedStr := string(hashed)
 	user := &domain.User{
 		UserID:   uuid.New(),
 		Email:    "budi@mail.com",
-		Password: string(hashed),
+		Password: &hashedStr,
 	}
 
 	mockUserRepo.On("GetUserByEmail", "budi@mail.com").Return(user, nil)
@@ -249,4 +253,58 @@ func TestLogin_TokenExpiryMatchesConfig(t *testing.T) {
 
 	assert.GreaterOrEqual(t, exp, expectedMin)
 	assert.LessOrEqual(t, exp, expectedMax)
+}
+
+func TestLoginWithGoogle_NewUser(t *testing.T) {
+	mockUserRepo := new(MockUserRepository)
+	mockWalletRepo := new(MockWalletRepository)
+	uc := NewAuthUsecase(mockUserRepo, mockWalletRepo)
+
+	profile := &domain.GoogleUserProfile{
+		ID:      "google-id-123",
+		Email:   "google@mail.com",
+		Name:    "Google User",
+		Picture: "https://avatar.url",
+	}
+
+	mockUserRepo.On("GetUserByGoogleID", "google-id-123").Return(nil, nil)
+	mockUserRepo.On("GetUserByEmail", "google@mail.com").Return(nil, nil)
+	mockUserRepo.On("CheckUsernameExists", "googleuser").Return(false, nil)
+	mockUserRepo.On("CreateUserWithWallet", mock.Anything, mock.Anything).Return(nil)
+
+	resp, err := uc.LoginWithGoogle(profile, "test-secret", 24)
+
+	assert.NoError(t, err)
+	assert.NotNil(t, resp)
+	assert.NotEmpty(t, resp.Token)
+	mockUserRepo.AssertExpectations(t)
+}
+
+func TestLoginWithGoogle_ExistingUser(t *testing.T) {
+	mockUserRepo := new(MockUserRepository)
+	mockWalletRepo := new(MockWalletRepository)
+	uc := NewAuthUsecase(mockUserRepo, mockWalletRepo)
+
+	profile := &domain.GoogleUserProfile{
+		ID:      "google-id-123",
+		Email:   "google@mail.com",
+		Name:    "Google User",
+		Picture: "https://avatar.url",
+	}
+
+	existingUser := &domain.User{
+		UserID: uuid.New(),
+		Email:  "google@mail.com",
+	}
+
+	mockUserRepo.On("GetUserByGoogleID", "google-id-123").Return(nil, nil)
+	mockUserRepo.On("GetUserByEmail", "google@mail.com").Return(existingUser, nil)
+	mockUserRepo.On("UpdateUser", mock.Anything).Return(nil)
+
+	resp, err := uc.LoginWithGoogle(profile, "test-secret", 24)
+
+	assert.NoError(t, err)
+	assert.NotNil(t, resp)
+	assert.NotEmpty(t, resp.Token)
+	mockUserRepo.AssertExpectations(t)
 }

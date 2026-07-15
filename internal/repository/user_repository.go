@@ -27,6 +27,17 @@ func (r *userRepository) GetUserByEmail(email string) (*domain.User, error) {
 	return &user, nil
 }
 
+func (r *userRepository) GetUserByGoogleID(googleID string) (*domain.User, error) {
+	var user domain.User
+	if err := r.db.Where("google_id = ?", googleID).First(&user).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &user, nil
+}
+
 func (r *userRepository) GetUserByID(id uuid.UUID) (*domain.User, error) {
 	var user domain.User
 	if err := r.db.Where("user_id = ?", id).First(&user).Error; err != nil {
@@ -67,4 +78,8 @@ func (r *userRepository) CreateUserWithWallet(user *domain.User, wallet *domain.
 
 		return nil
 	})
+}
+
+func (r *userRepository) UpdateUser(user *domain.User) error {
+	return r.db.Save(user).Error
 }

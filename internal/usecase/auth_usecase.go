@@ -12,6 +12,7 @@ import (
 type AuthUsecase interface {
 	Register(username, email, password string) (*domain.RegisterResponse, error)
 	Login(email, password, jwtSecret string, expiryHours int) (*domain.LoginResponse, error)
+	LoginWithGoogle(profile *domain.GoogleUserProfile, jwtSecret string, expiryHours int) (*domain.LoginResponse, error)
 }
 
 type authUsecase struct {
@@ -51,11 +52,13 @@ func (uc *authUsecase) Register(username, email, password string) (*domain.Regis
 	userID := uuid.New()
 	walletID := uuid.New()
 
+	hashedPasswordStr := string(hashedPassword)
+
 	user := &domain.User{
 		UserID:   userID,
 		Username: username,
 		Email:    email,
-		Password: string(hashedPassword),
+		Password: &hashedPasswordStr,
 		IsActive: true,
 	}
 
