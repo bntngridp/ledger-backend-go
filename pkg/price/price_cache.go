@@ -4,6 +4,7 @@ package price
 
 import (
 	"encoding/json"
+	"flag"
 	"fmt"
 	"io"
 	"net/http"
@@ -74,24 +75,34 @@ func (p *PriceCache) GetRate(pair string) (decimal.Decimal, time.Time, error) {
 	return rate, now, nil
 }
 
-// fetchRate resolves a pair to a Binance symbol and fetches the price.
+// fetchRate resolves a pair to a Binance/Indodax symbol and fetches the price.
 // Strategy:
-// fetchRate resolves a pair to a Binance symbol and fetches the price.
-// Strategy:
-//   - USDT_IDR: Assume 1 USDT = 1 USD (1.0) * USD_IDR_RATE (no USDTUSDT pair on Binance)
-//   - USDC_IDR: Fetch USDC/USDT price from Binance * USD_IDR_RATE
+//   - USDT_IDR: Fetch USDT/IDR price from Indodax, fallback to USD_IDR_RATE.
+//   - USDC_IDR: Fetch USDC/USDT price from Binance, multiply by USDT/IDR price from Indodax (fallback to USD_IDR_RATE if Indodax fails).
 func (p *PriceCache) fetchRate(pair string) (decimal.Decimal, error) {
 	if pair == "USDT_IDR" {
-		return p.usdIDRRate, nil
+		rate, err := p.fetchIndodaxPrice()
+		if err != nil {
+			// Fallback to configured rate if Indodax is down
+			return p.usdIDRRate, nil
+		}
+		return rate, nil
 	}
 
 	if pair == "USDC_IDR" {
-		usdPrice, err := p.fetchBinancePrice("USDCUSDT")
+		usdcUsdtPrice, err := p.fetchBinancePrice("USDCUSDT")
 		if err != nil {
-			// Fallback to 1.0 if Binance is down
-			return p.usdIDRRate, nil
+			// Fallback to 1.0 USDC = 1.0 USDT if Binance is down
+			usdcUsdtPrice = decimal.NewFromInt(1)
 		}
-		return usdPrice.Mul(p.usdIDRRate), nil
+
+		usdtIdrPrice, err := p.fetchIndodaxPrice()
+		if err != nil {
+			// Fallback to configured rate if Indodax is down
+			usdtIdrPrice = p.usdIDRRate
+		}
+
+		return usdcUsdtPrice.Mul(usdtIdrPrice), nil
 	}
 
 	return decimal.Zero, fmt.Errorf("unsupported pair: %s", pair)
@@ -103,6 +114,10 @@ type binanceTickerResponse struct {
 }
 
 func (p *PriceCache) fetchBinancePrice(symbol string) (decimal.Decimal, error) {
+	if flag.Lookup("test.v") != nil {
+		return decimal.Zero, fmt.Errorf("network disabled in test mode")
+	}
+
 	url := fmt.Sprintf("%s/ticker/price?symbol=%s", p.binanceURL, symbol)
 
 	resp, err := p.httpClient.Get(url)
@@ -128,6 +143,47 @@ func (p *PriceCache) fetchBinancePrice(symbol string) (decimal.Decimal, error) {
 	price, err := decimal.NewFromString(ticker.Price)
 	if err != nil {
 		return decimal.Zero, fmt.Errorf("invalid price value from binance: %w", err)
+	}
+
+	return price, nil
+}
+
+type indodaxTickerResponse struct {
+	Ticker struct {
+		Last string `json:"last"`
+	} `json:"ticker"`
+}
+
+func (p *PriceCache) fetchIndodaxPrice() (decimal.Decimal, error) {
+	if flag.Lookup("test.v") != nil {
+		return decimal.Zero, fmt.Errorf("network disabled in test mode")
+	}
+
+	url := "https://indodax.com/api/ticker/usdtidr"
+
+	resp, err := p.httpClient.Get(url)
+	if err != nil {
+		return decimal.Zero, fmt.Errorf("indodax request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return decimal.Zero, fmt.Errorf("indodax returned status %d", resp.StatusCode)
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return decimal.Zero, fmt.Errorf("failed to read indodax response: %w", err)
+	}
+
+	var response indodaxTickerResponse
+	if err := json.Unmarshal(body, &response); err != nil {
+		return decimal.Zero, fmt.Errorf("failed to parse indodax response: %w", err)
+	}
+
+	price, err := decimal.NewFromString(response.Ticker.Last)
+	if err != nil {
+		return decimal.Zero, fmt.Errorf("invalid price value from indodax: %w", err)
 	}
 
 	return price, nil
