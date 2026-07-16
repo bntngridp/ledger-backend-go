@@ -157,7 +157,7 @@
             "header": [{"key": "Content-Type", "value": "application/json"}],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"destination_user_id\": \"{{andi_user_id}}\",\n  \"amount\": 30000,\n  \"notes\": \"bayar makan siang\"\n}"
+              "raw": "{\n  \"destination_user_id\": \"{{andi_user_id}}\",\n  \"asset_symbol\": \"IDR\",\n  \"amount\": 30000,\n  \"notes\": \"bayar makan siang\"\n}"
             },
             "url": {"raw": "{{base_url}}/api/v1/transfer", "host": ["{{base_url}}"], "path": ["api", "v1", "transfer"]}
           }
@@ -194,7 +194,7 @@
             "header": [{"key": "Content-Type", "value": "application/json"}],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"destination_user_id\": \"{{budi_user_id}}\",\n  \"amount\": 5000,\n  \"notes\": \"kembalian\"\n}"
+              "raw": "{\n  \"destination_user_id\": \"{{budi_user_id}}\",\n  \"asset_symbol\": \"IDR\",\n  \"amount\": 5000,\n  \"notes\": \"kembalian\"\n}"
             },
             "url": {"raw": "{{base_url}}/api/v1/transfer", "host": ["{{base_url}}"], "path": ["api", "v1", "transfer"]}
           }
@@ -213,7 +213,7 @@
           "request": {
             "method": "GET",
             "header": [],
-            "url": {"raw": "{{base_url}}/api/v1/exchange/rate?pair=USDT_IDR", "host": ["{{base_url}}"], "path": ["api", "v1", "exchange", "rate"]}
+            "url": "{{base_url}}/api/v1/exchange/rate?pair=USDT_IDR"
           }
         },
         {
@@ -242,7 +242,7 @@
           "request": {
             "method": "GET",
             "header": [],
-            "url": {"raw": "{{base_url}}/api/v1/crypto/address?network=polygon_amoy&asset_symbol=USDT", "host": ["{{base_url}}"], "path": ["api", "v1", "crypto", "address"]}
+            "url": "{{base_url}}/api/v1/crypto/address?network=polygon_amoy&asset_symbol=USDT"
           }
         },
         {

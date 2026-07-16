@@ -22,6 +22,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"reflect"
 	"strconv"
 	"strings"
 	"syscall"
@@ -36,6 +37,8 @@ import (
 	"github.com/bntngridp/ledger-backend/pkg/midtrans"
 	"github.com/bntngridp/ledger-backend/pkg/price"
 	"github.com/gin-gonic/gin"
+	"github.com/gin-gonic/gin/binding"
+	"github.com/go-playground/validator/v10"
 	"github.com/joho/godotenv"
 	"github.com/shopspring/decimal"
 	swaggerFiles "github.com/swaggo/files"
@@ -56,6 +59,16 @@ func getEnv(key, fallback string) string {
 func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 	slog.SetDefault(logger)
+
+	// Register custom validator for decimal.Decimal to support validation tags like gt=0
+	if v, ok := binding.Validator.Engine().(*validator.Validate); ok {
+		v.RegisterCustomTypeFunc(func(field reflect.Value) interface{} {
+			if val, ok := field.Interface().(decimal.Decimal); ok {
+				return val.InexactFloat64()
+			}
+			return nil
+		}, decimal.Decimal{})
+	}
 
 	if err := godotenv.Load(); err != nil {
 		slog.Info("no .env file found, using system env")
