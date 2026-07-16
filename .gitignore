@@ -19,3 +19,7 @@ vendor/
 .vscode/
 *.swp
 .DS_Store
+
+# Certificates and Private Keys
+certs/
+*.pem

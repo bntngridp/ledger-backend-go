@@ -127,7 +127,13 @@ func TestWithdrawFiat_IrisFailure(t *testing.T) {
 	mockTxRepo := new(MockTransactionRepository)
 
 	// Create Iris client pointing to a dummy invalid port to trigger network error (API failure)
-	dummyIrisClient := midtrans.NewIrisClient("dummy-key", "http://127.0.0.1:9999")
+	dummyIrisClient := midtrans.NewIrisClient(midtrans.BIConfig{
+		ClientID:       "dummy-client",
+		ClientSecret:   "dummy-secret",
+		PartnerID:      "dummy-partner",
+		PrivateKeyPath: "certs/private-key.pem",
+		BaseURL:        "http://127.0.0.1:9999",
+	})
 	uc := NewFiatUsecase(mockWalletRepo, mockTxRepo, dummyIrisClient)
 
 	userID := uuid.New()

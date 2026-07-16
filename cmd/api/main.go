@@ -80,8 +80,11 @@ func main() {
 	}
 	midtransIsProduction := os.Getenv("MIDTRANS_IS_PRODUCTION") == "true"
 
-	irisAPIKey := os.Getenv("MIDTRANS_IRIS_API_KEY")
-	irisBaseURL := getEnv("MIDTRANS_IRIS_BASE_URL", "https://app.sandbox.midtrans.com/iris")
+	snapClientID := os.Getenv("MIDTRANS_SNAP_CLIENT_ID")
+	snapClientSecret := os.Getenv("MIDTRANS_SNAP_CLIENT_SECRET")
+	snapPartnerID := os.Getenv("MIDTRANS_SNAP_PARTNER_ID")
+	snapPrivateKeyPath := getEnv("MIDTRANS_SNAP_PRIVATE_KEY_PATH", "certs/private-key.pem")
+	snapBaseURL := getEnv("MIDTRANS_SNAP_BASE_URL", "https://merchants.sbx.midtrans.com")
 
 	cryptoEncryptionKeyBase64 := os.Getenv("CRYPTO_ENCRYPTION_KEY")
 	if cryptoEncryptionKeyBase64 == "" {
@@ -131,7 +134,13 @@ func main() {
 	}
 
 	midtransClient := midtrans.NewMidtransClient(midtransServerKey, midtransIsProduction)
-	irisClient := midtrans.NewIrisClient(irisAPIKey, irisBaseURL)
+	irisClient := midtrans.NewIrisClient(midtrans.BIConfig{
+		ClientID:       snapClientID,
+		ClientSecret:   snapClientSecret,
+		PartnerID:      snapPartnerID,
+		PrivateKeyPath: snapPrivateKeyPath,
+		BaseURL:        snapBaseURL,
+	})
 	alchemyClient := blockchain.NewAlchemyClient(alchemyHTTPURL, alchemyWSURL)
 	priceCache := price.NewPriceCache(binanceAPIURL, usdIDRRate)
 
