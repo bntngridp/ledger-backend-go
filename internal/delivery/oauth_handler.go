@@ -7,6 +7,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
+	"os"
 	"time"
 
 	"github.com/bntngridp/ledger-backend/internal/domain"
@@ -137,27 +139,27 @@ func (h *OAuthHandler) GoogleCallback(c *gin.Context) {
 		return
 	}
 
+	frontendURL := os.Getenv("FRONTEND_URL")
+	if frontendURL == "" {
+		frontendURL = "http://localhost:8081"
+	}
+
 	if googleProfile.Email == "" {
-		c.JSON(http.StatusBadRequest, domain.ErrorResponse{
-			Status:  http.StatusBadRequest,
-			Message: "google account has no email",
-		})
+		c.Redirect(http.StatusTemporaryRedirect, fmt.Sprintf("%s/login?error=%s", frontendURL, url.QueryEscape("google account has no email")))
 		return
 	}
 
 	// 5. Call usecase to login / register
 	loginResp, err := h.authUC.LoginWithGoogle(&googleProfile, h.jwtSecret, h.expiryHours)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, domain.ErrorResponse{
-			Status:  http.StatusInternalServerError,
-			Message: "login failed: " + err.Error(),
-		})
+		c.Redirect(http.StatusTemporaryRedirect, fmt.Sprintf("%s/login?error=%s", frontendURL, url.QueryEscape("login failed: "+err.Error())))
 		return
 	}
 
-	c.JSON(http.StatusOK, domain.SuccessResponse{
-		Status:  http.StatusOK,
-		Message: "google login successful",
-		Data:    loginResp,
-	})
+	if loginResp.TwoFactorRequired {
+		c.Redirect(http.StatusTemporaryRedirect, fmt.Sprintf("%s/login?pre_auth_token=%s&requires_2fa=true", frontendURL, loginResp.PreAuthToken))
+		return
+	}
+
+	c.Redirect(http.StatusTemporaryRedirect, fmt.Sprintf("%s/login?token=%s", frontendURL, loginResp.Token))
 }

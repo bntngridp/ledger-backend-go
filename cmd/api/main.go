@@ -243,6 +243,9 @@ func main() {
 
 	r := gin.Default()
 
+	r.Use(middleware.CORSMiddleware())
+	r.OPTIONS("/*any", middleware.CORSMiddleware())
+
 	r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 	r.GET("/", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
