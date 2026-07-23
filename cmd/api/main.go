@@ -33,6 +33,7 @@ import (
 	"github.com/bntngridp/ledger-backend/internal/usecase"
 	"github.com/bntngridp/ledger-backend/pkg/blockchain"
 	"github.com/bntngridp/ledger-backend/pkg/database"
+	"github.com/bntngridp/ledger-backend/pkg/email"
 	"github.com/bntngridp/ledger-backend/pkg/middleware"
 	"github.com/bntngridp/ledger-backend/pkg/midtrans"
 	"github.com/bntngridp/ledger-backend/pkg/price"
@@ -155,7 +156,14 @@ func main() {
 		BaseURL:        snapBaseURL,
 	})
 	alchemyClient := blockchain.NewAlchemyClient(alchemyHTTPURL, alchemyWSURL)
-	priceCache := price.NewPriceCache(binanceAPIURL, usdIDRRate)
+	smtpHost := getEnv("SMTP_HOST", "smtp.gmail.com")
+	smtpPortStr := getEnv("SMTP_PORT", "587")
+	smtpPort := email.ParseSMTPPort(smtpPortStr)
+	smtpUser := os.Getenv("SMTP_USER")
+	smtpPassword := os.Getenv("SMTP_PASSWORD")
+	smtpSenderName := getEnv("SMTP_SENDER_NAME", "Ledger Wallet")
+
+	emailService := email.NewEmailService(smtpHost, smtpPort, smtpUser, smtpPassword, smtpSenderName, logger)
 
 	userRepo := repo.NewUserRepository(db)
 	walletRepo := repo.NewWalletRepository(db)
