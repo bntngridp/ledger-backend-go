@@ -205,8 +205,8 @@ func (h *AuthHandler) Verify2FA(c *gin.Context) {
 	recoveryCodes, err := h.authUC.Enable2FA(userID, req.Code)
 	if err != nil {
 		if err == domain.ErrInvalid2FACode {
-			c.JSON(http.StatusUnauthorized, domain.ErrorResponse{
-				Status:  http.StatusUnauthorized,
+			c.JSON(http.StatusBadRequest, domain.ErrorResponse{
+				Status:  http.StatusBadRequest,
 				Message: err.Error(),
 			})
 			return
@@ -309,8 +309,8 @@ func (h *AuthHandler) Disable2FA(c *gin.Context) {
 
 	if err := h.authUC.Disable2FA(userID, req); err != nil {
 		if err == domain.ErrInvalid2FACode {
-			c.JSON(http.StatusUnauthorized, domain.ErrorResponse{
-				Status:  http.StatusUnauthorized,
+			c.JSON(http.StatusBadRequest, domain.ErrorResponse{
+				Status:  http.StatusBadRequest,
 				Message: err.Error(),
 			})
 			return
