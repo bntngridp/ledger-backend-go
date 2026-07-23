@@ -156,6 +156,7 @@ func main() {
 		BaseURL:        snapBaseURL,
 	})
 	alchemyClient := blockchain.NewAlchemyClient(alchemyHTTPURL, alchemyWSURL)
+	priceCache := price.NewPriceCache(binanceAPIURL, usdIDRRate)
 	smtpHost := getEnv("SMTP_HOST", "smtp.gmail.com")
 	smtpPortStr := getEnv("SMTP_PORT", "587")
 	smtpPort := email.ParseSMTPPort(smtpPortStr)
@@ -200,7 +201,7 @@ func main() {
 		slog.Warn("Alchemy WS URL placeholder or missing contract addresses; listener disabled")
 	}
 
-	authUC := usecase.NewAuthUsecase(userRepo, walletRepo, cryptoEncryptionKeyBase64)
+	authUC := usecase.NewAuthUsecase(userRepo, walletRepo, emailService, cryptoEncryptionKeyBase64)
 	transferUC := usecase.NewTransferUsecase(walletRepo, txRepo)
 	walletUC := usecase.NewWalletUsecase(walletRepo, txRepo, midtransClient, priceCache)
 	webhookUC := usecase.NewWebhookUsecase(txRepo, midtransClient)
@@ -288,6 +289,7 @@ func main() {
 			api.POST("/auth/2fa/enable", authHandler.Enable2FA)
 			api.POST("/auth/2fa/verify", authHandler.Verify2FA)
 			api.POST("/auth/2fa/disable", authHandler.Disable2FA)
+			api.POST("/auth/2fa/email-otp/send", authHandler.Send2FAEmailOTP)
 
 			api.GET("/crypto/address", cryptoHandler.GetDepositAddress)
 			api.POST("/crypto/withdraw", limiter, middleware.Require2FAIfEnabled(authUC), cryptoHandler.WithdrawCrypto)

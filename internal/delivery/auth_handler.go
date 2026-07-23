@@ -202,7 +202,8 @@ func (h *AuthHandler) Verify2FA(c *gin.Context) {
 		return
 	}
 
-	if err := h.authUC.Enable2FA(userID, req.Code); err != nil {
+	recoveryCodes, err := h.authUC.Enable2FA(userID, req.Code)
+	if err != nil {
 		if err == domain.ErrInvalid2FACode {
 			c.JSON(http.StatusUnauthorized, domain.ErrorResponse{
 				Status:  http.StatusUnauthorized,
@@ -220,12 +221,55 @@ func (h *AuthHandler) Verify2FA(c *gin.Context) {
 	c.JSON(http.StatusOK, domain.SuccessResponse{
 		Status:  http.StatusOK,
 		Message: "2FA enabled successfully",
+		Data: domain.Enable2FAConfirmResponse{
+			RecoveryCodes: recoveryCodes,
+		},
+	})
+}
+
+// Send2FAEmailOTP godoc
+// @Summary      Send Email OTP for 2FA Deactivation/Recovery
+// @Tags         auth
+// @Produce      json
+// @Security     BearerAuth
+// @Success      200 {object} domain.SuccessResponse "OTP sent to email"
+// @Router       /auth/2fa/email-otp/send [post]
+func (h *AuthHandler) Send2FAEmailOTP(c *gin.Context) {
+	userIDStr, exists := c.Get("user_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, domain.ErrorResponse{
+			Status:  http.StatusUnauthorized,
+			Message: "unauthorized",
+		})
+		return
+	}
+
+	userID, err := uuid.Parse(userIDStr.(string))
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, domain.ErrorResponse{
+			Status:  http.StatusUnauthorized,
+			Message: "unauthorized",
+		})
+		return
+	}
+
+	if err := h.authUC.Send2FAEmailOTP(userID); err != nil {
+		c.JSON(http.StatusInternalServerError, domain.ErrorResponse{
+			Status:  http.StatusInternalServerError,
+			Message: err.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, domain.SuccessResponse{
+		Status:  http.StatusOK,
+		Message: "Kode OTP telah dikirimkan ke email Anda",
 	})
 }
 
 // Disable2FA godoc
 // @Summary      Disable 2FA TOTP
-// @Description  Disables 2FA by validating the current TOTP code.
+// @Description  Disables 2FA by validating the current TOTP code, Recovery Code, or Email OTP.
 // @Tags         auth
 // @Accept       json
 // @Produce      json
@@ -263,7 +307,7 @@ func (h *AuthHandler) Disable2FA(c *gin.Context) {
 		return
 	}
 
-	if err := h.authUC.Disable2FA(userID, req.Code); err != nil {
+	if err := h.authUC.Disable2FA(userID, req); err != nil {
 		if err == domain.ErrInvalid2FACode {
 			c.JSON(http.StatusUnauthorized, domain.ErrorResponse{
 				Status:  http.StatusUnauthorized,
@@ -271,8 +315,8 @@ func (h *AuthHandler) Disable2FA(c *gin.Context) {
 			})
 			return
 		}
-		c.JSON(http.StatusInternalServerError, domain.ErrorResponse{
-			Status:  http.StatusInternalServerError,
+		c.JSON(http.StatusBadRequest, domain.ErrorResponse{
+			Status:  http.StatusBadRequest,
 			Message: err.Error(),
 		})
 		return

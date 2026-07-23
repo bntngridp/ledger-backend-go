@@ -19,7 +19,7 @@ import (
 func TestRegister_Success(t *testing.T) {
 	mockUserRepo := new(MockUserRepository)
 	mockWalletRepo := new(MockWalletRepository)
-	uc := NewAuthUsecase(mockUserRepo, mockWalletRepo, "MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTIzNDU2Nzg5MDE=")
+	uc := NewAuthUsecase(mockUserRepo, mockWalletRepo, nil, "MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTIzNDU2Nzg5MDE=")
 
 	mockUserRepo.On("CheckEmailExists", "budi@mail.com").Return(false, nil)
 	mockUserRepo.On("CheckUsernameExists", "budi").Return(false, nil)
@@ -42,7 +42,7 @@ func TestRegister_Success(t *testing.T) {
 func TestRegister_EmailAlreadyRegistered(t *testing.T) {
 	mockUserRepo := new(MockUserRepository)
 	mockWalletRepo := new(MockWalletRepository)
-	uc := NewAuthUsecase(mockUserRepo, mockWalletRepo, "MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTIzNDU2Nzg5MDE=")
+	uc := NewAuthUsecase(mockUserRepo, mockWalletRepo, nil, "MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTIzNDU2Nzg5MDE=")
 
 	mockUserRepo.On("CheckEmailExists", "budi@mail.com").Return(true, nil)
 
@@ -338,7 +338,7 @@ func TestGenerate2FASecret_Success(t *testing.T) {
 func TestEnable2FA_Success(t *testing.T) {
 	mockUserRepo := new(MockUserRepository)
 	mockWalletRepo := new(MockWalletRepository)
-	uc := NewAuthUsecase(mockUserRepo, mockWalletRepo, "MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTIzNDU2Nzg5MDE=")
+	uc := NewAuthUsecase(mockUserRepo, mockWalletRepo, nil, "MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTIzNDU2Nzg5MDE=")
 
 	userID := uuid.New()
 	key, _ := totp.Generate(totp.GenerateOpts{
@@ -358,17 +358,18 @@ func TestEnable2FA_Success(t *testing.T) {
 	}
 
 	mockUserRepo.On("GetUserByID", userID).Return(user, nil)
-	mockUserRepo.On("Update2FA", userID, &encryptedHex, true).Return(nil)
+	mockUserRepo.On("Update2FAWithRecoveryCodes", userID, &encryptedHex, mock.Anything, true).Return(nil)
 
 	code, _ := totp.GenerateCode(secret, time.Now())
-	err := uc.Enable2FA(userID, code)
+	codes, err := uc.Enable2FA(userID, code)
 	assert.NoError(t, err)
+	assert.Len(t, codes, 8)
 }
 
 func TestEnable2FA_InvalidCode(t *testing.T) {
 	mockUserRepo := new(MockUserRepository)
 	mockWalletRepo := new(MockWalletRepository)
-	uc := NewAuthUsecase(mockUserRepo, mockWalletRepo, "MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTIzNDU2Nzg5MDE=")
+	uc := NewAuthUsecase(mockUserRepo, mockWalletRepo, nil, "MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTIzNDU2Nzg5MDE=")
 
 	userID := uuid.New()
 	key, _ := totp.Generate(totp.GenerateOpts{
@@ -389,6 +390,6 @@ func TestEnable2FA_InvalidCode(t *testing.T) {
 
 	mockUserRepo.On("GetUserByID", userID).Return(user, nil)
 
-	err := uc.Enable2FA(userID, "000000")
+	_, err := uc.Enable2FA(userID, "000000")
 	assert.ErrorIs(t, err, domain.ErrInvalid2FACode)
 }

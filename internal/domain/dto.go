@@ -44,12 +44,18 @@ type Enable2FAResponse struct {
 	QRCodeURL string `json:"qr_code_url"`
 }
 
+type Enable2FAConfirmResponse struct {
+	RecoveryCodes []string `json:"recovery_codes"`
+}
+
 type Verify2FARequest struct {
 	Code string `json:"code" binding:"required,len=6"`
 }
 
 type Disable2FARequest struct {
-	Code string `json:"code" binding:"required,len=6"`
+	Code         string `json:"code,omitempty"`
+	RecoveryCode string `json:"recovery_code,omitempty"`
+	EmailOTP     string `json:"email_otp,omitempty"`
 }
 
 type Login2FARequest struct {

@@ -106,3 +106,12 @@ func (r *userRepository) Update2FA(userID uuid.UUID, secret *string, enabled boo
 			"two_factor_enabled": enabled,
 		}).Error
 }
+
+func (r *userRepository) Update2FAWithRecoveryCodes(userID uuid.UUID, secret *string, recoveryCodes *string, enabled bool) error {
+	return r.db.Model(&domain.User{}).Where("user_id = ?", userID).
+		Updates(map[string]interface{}{
+			"two_factor_secret":         secret,
+			"two_factor_recovery_codes": recoveryCodes,
+			"two_factor_enabled":        enabled,
+		}).Error
+}

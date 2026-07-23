@@ -4,20 +4,29 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"sync"
+	"time"
 
 	"github.com/bntngridp/ledger-backend/internal/domain"
+	"github.com/bntngridp/ledger-backend/pkg/email"
 	"github.com/google/uuid"
 	"github.com/shopspring/decimal"
 	"golang.org/x/crypto/bcrypt"
 )
+
+type emailOTPEntry struct {
+	code      string
+	expiresAt time.Time
+}
 
 type AuthUsecase interface {
 	Register(username, email, password string) (*domain.RegisterResponse, error)
 	Login(email, password, jwtSecret string, expiryHours int) (*domain.LoginResponse, error)
 	LoginWithGoogle(profile *domain.GoogleUserProfile, jwtSecret string, expiryHours int) (*domain.LoginResponse, error)
 	Generate2FASecret(userID uuid.UUID) (*domain.Enable2FAResponse, error)
-	Enable2FA(userID uuid.UUID, code string) error
-	Disable2FA(userID uuid.UUID, code string) error
+	Enable2FA(userID uuid.UUID, code string) ([]string, error)
+	Disable2FA(userID uuid.UUID, req domain.Disable2FARequest) error
+	Send2FAEmailOTP(userID uuid.UUID) error
 	Verify2FALogin(preAuthToken, code, jwtSecret string, expiryHours int) (*domain.LoginResponse, error)
 	Verify2FACode(userID uuid.UUID, code string) error
 }
@@ -25,15 +34,20 @@ type AuthUsecase interface {
 type authUsecase struct {
 	userRepo      domain.UserRepository
 	walletRepo    domain.WalletRepository
+	emailService  email.EmailService
 	encryptionKey []byte
+	emailOTPs     map[uuid.UUID]emailOTPEntry
+	otpMu         sync.Mutex
 }
 
-func NewAuthUsecase(userRepo domain.UserRepository, walletRepo domain.WalletRepository, encryptionKeyBase64 string) AuthUsecase {
+func NewAuthUsecase(userRepo domain.UserRepository, walletRepo domain.WalletRepository, emailService email.EmailService, encryptionKeyBase64 string) AuthUsecase {
 	key, _ := base64.StdEncoding.DecodeString(encryptionKeyBase64)
 	return &authUsecase{
 		userRepo:      userRepo,
 		walletRepo:    walletRepo,
+		emailService:  emailService,
 		encryptionKey: key,
+		emailOTPs:     make(map[uuid.UUID]emailOTPEntry),
 	}
 }
 

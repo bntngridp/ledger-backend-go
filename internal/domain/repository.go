@@ -15,6 +15,7 @@ type UserRepository interface {
 	CreateUserWithWallet(user *User, wallet *Wallet) error
 	UpdateUser(user *User) error
 	Update2FA(userID uuid.UUID, secret *string, enabled bool) error
+	Update2FAWithRecoveryCodes(userID uuid.UUID, secret *string, recoveryCodes *string, enabled bool) error
 }
 
 // WalletRepository defines the data access contract for Wallet and WalletBalance aggregates.

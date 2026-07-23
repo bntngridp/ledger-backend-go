@@ -195,6 +195,11 @@ func (m *MockUserRepository) Update2FA(userID uuid.UUID, secret *string, enabled
 	return args.Error(0)
 }
 
+func (m *MockUserRepository) Update2FAWithRecoveryCodes(userID uuid.UUID, secret *string, recoveryCodes *string, enabled bool) error {
+	args := m.Called(userID, secret, recoveryCodes, enabled)
+	return args.Error(0)
+}
+
 type MockCryptoAddressRepository struct {
 	mock.Mock
 }

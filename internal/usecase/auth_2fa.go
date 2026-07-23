@@ -1,13 +1,17 @@
 package usecase
 
 import (
+	"crypto/rand"
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"math/big"
+	"strings"
 	"time"
 
 	"github.com/bntngridp/ledger-backend/internal/domain"
 	pkgcrypto "github.com/bntngridp/ledger-backend/pkg/crypto"
+	"github.com/bntngridp/ledger-backend/pkg/email"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"github.com/pquerna/otp/totp"
@@ -48,7 +52,61 @@ func (uc *authUsecase) Generate2FASecret(userID uuid.UUID) (*domain.Enable2FARes
 	}, nil
 }
 
-func (uc *authUsecase) Enable2FA(userID uuid.UUID, code string) error {
+func generateRecoveryCodes() ([]string, string) {
+	codes := make([]string, 8)
+	for i := 0; i < 8; i++ {
+		c1, _ := rand.Int(rand.Reader, big.NewInt(9000))
+		c2, _ := rand.Int(rand.Reader, big.NewInt(9000))
+		codes[i] = fmt.Sprintf("%04d-%04d", c1.Int64()+1000, c2.Int64()+1000)
+	}
+	return codes, strings.Join(codes, ",")
+}
+
+func (uc *authUsecase) Enable2FA(userID uuid.UUID, code string) ([]string, error) {
+	user, err := uc.userRepo.GetUserByID(userID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get user: %w", err)
+	}
+	if user == nil {
+		return nil, domain.ErrNotFound
+	}
+
+	if user.TwoFactorSecret == nil {
+		return nil, errors.New("2FA secret has not been generated")
+	}
+
+	encBytes, err := hex.DecodeString(*user.TwoFactorSecret)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode encrypted secret: %w", err)
+	}
+
+	decrypted, err := pkgcrypto.Decrypt(encBytes, uc.encryptionKey)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decrypt secret: %w", err)
+	}
+	secretStr := string(decrypted)
+
+	if !totp.Validate(code, secretStr) {
+		return nil, domain.ErrInvalid2FACode
+	}
+
+	// Generate 8 Backup Recovery Codes
+	rawCodes, codesStr := generateRecoveryCodes()
+
+	encCodes, err := pkgcrypto.Encrypt([]byte(codesStr), uc.encryptionKey)
+	if err != nil {
+		return nil, fmt.Errorf("failed to encrypt recovery codes: %w", err)
+	}
+	encCodesHex := hex.EncodeToString(encCodes)
+
+	if err := uc.userRepo.Update2FAWithRecoveryCodes(userID, user.TwoFactorSecret, &encCodesHex, true); err != nil {
+		return nil, fmt.Errorf("failed to enable 2FA: %w", err)
+	}
+
+	return rawCodes, nil
+}
+
+func (uc *authUsecase) Send2FAEmailOTP(userID uuid.UUID) error {
 	user, err := uc.userRepo.GetUserByID(userID)
 	if err != nil {
 		return fmt.Errorf("failed to get user: %w", err)
@@ -57,33 +115,20 @@ func (uc *authUsecase) Enable2FA(userID uuid.UUID, code string) error {
 		return domain.ErrNotFound
 	}
 
-	if user.TwoFactorSecret == nil {
-		return errors.New("2FA secret has not been generated")
-	}
+	otpCode := email.GenerateNumericOTP()
 
-	encBytes, err := hex.DecodeString(*user.TwoFactorSecret)
-	if err != nil {
-		return fmt.Errorf("failed to decode encrypted secret: %w", err)
+	uc.otpMu.Lock()
+	uc.emailOTPs[userID] = emailOTPEntry{
+		code:      otpCode,
+		expiresAt: time.Now().Add(5 * time.Minute),
 	}
+	uc.otpMu.Unlock()
 
-	decrypted, err := pkgcrypto.Decrypt(encBytes, uc.encryptionKey)
-	if err != nil {
-		return fmt.Errorf("failed to decrypt secret: %w", err)
-	}
-	secretStr := string(decrypted)
-
-	if !totp.Validate(code, secretStr) {
-		return domain.ErrInvalid2FACode
-	}
-
-	if err := uc.userRepo.Update2FA(userID, user.TwoFactorSecret, true); err != nil {
-		return fmt.Errorf("failed to enable 2FA: %w", err)
-	}
-
+	uc.emailService.SendOTPEmailAsync(user.Email, otpCode, "Menonaktifkan 2FA / Pemulihan Akun")
 	return nil
 }
 
-func (uc *authUsecase) Disable2FA(userID uuid.UUID, code string) error {
+func (uc *authUsecase) Disable2FA(userID uuid.UUID, req domain.Disable2FARequest) error {
 	user, err := uc.userRepo.GetUserByID(userID)
 	if err != nil {
 		return fmt.Errorf("failed to get user: %w", err)
@@ -96,26 +141,75 @@ func (uc *authUsecase) Disable2FA(userID uuid.UUID, code string) error {
 		return errors.New("2FA is not enabled")
 	}
 
-	if user.TwoFactorSecret == nil {
-		return errors.New("2FA secret missing")
+	verified := false
+
+	// Method 1: Email OTP
+	if req.EmailOTP != "" {
+		uc.otpMu.Lock()
+		entry, exists := uc.emailOTPs[userID]
+		if exists && entry.code == req.EmailOTP && time.Now().Before(entry.expiresAt) {
+			verified = true
+			delete(uc.emailOTPs, userID)
+		}
+		uc.otpMu.Unlock()
+
+		if !verified {
+			return errors.New("kode OTP email salah atau sudah kadaluarsa")
+		}
 	}
 
-	encBytes, err := hex.DecodeString(*user.TwoFactorSecret)
-	if err != nil {
-		return fmt.Errorf("failed to decode encrypted secret: %w", err)
+	// Method 2: Recovery Code
+	if !verified && req.RecoveryCode != "" {
+		if user.TwoFactorRecoveryCodes != nil {
+			encBytes, err := hex.DecodeString(*user.TwoFactorRecoveryCodes)
+			if err == nil {
+				decrypted, err := pkgcrypto.Decrypt(encBytes, uc.encryptionKey)
+				if err == nil {
+					savedCodes := strings.Split(string(decrypted), ",")
+					cleanedInput := strings.TrimSpace(req.RecoveryCode)
+					for _, sc := range savedCodes {
+						if strings.EqualFold(sc, cleanedInput) {
+							verified = true
+							break
+						}
+					}
+				}
+			}
+		}
+		if !verified {
+			return errors.New("kode pemulihan (recovery code) tidak valid")
+		}
 	}
 
-	decrypted, err := pkgcrypto.Decrypt(encBytes, uc.encryptionKey)
-	if err != nil {
-		return fmt.Errorf("failed to decrypt secret: %w", err)
-	}
-	secretStr := string(decrypted)
+	// Method 3: 6-Digit TOTP Code (Standard)
+	if !verified && req.Code != "" {
+		if user.TwoFactorSecret == nil {
+			return errors.New("2FA secret missing")
+		}
 
-	if !totp.Validate(code, secretStr) {
-		return domain.ErrInvalid2FACode
+		encBytes, err := hex.DecodeString(*user.TwoFactorSecret)
+		if err != nil {
+			return fmt.Errorf("failed to decode encrypted secret: %w", err)
+		}
+
+		decrypted, err := pkgcrypto.Decrypt(encBytes, uc.encryptionKey)
+		if err != nil {
+			return fmt.Errorf("failed to decrypt secret: %w", err)
+		}
+		secretStr := string(decrypted)
+
+		if totp.Validate(req.Code, secretStr) {
+			verified = true
+		} else {
+			return domain.ErrInvalid2FACode
+		}
 	}
 
-	if err := uc.userRepo.Update2FA(userID, nil, false); err != nil {
+	if !verified {
+		return errors.New("silakan masukkan Kode OTP Authenticator, Kode Pemulihan, atau Kode Email OTP")
+	}
+
+	if err := uc.userRepo.Update2FAWithRecoveryCodes(userID, nil, nil, false); err != nil {
 		return fmt.Errorf("failed to disable 2FA: %w", err)
 	}
 
