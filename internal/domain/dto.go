@@ -55,7 +55,6 @@ type Verify2FARequest struct {
 type Disable2FARequest struct {
 	Code         string `json:"code,omitempty"`
 	RecoveryCode string `json:"recovery_code,omitempty"`
-	EmailOTP     string `json:"email_otp,omitempty"`
 }
 
 type Login2FARequest struct {

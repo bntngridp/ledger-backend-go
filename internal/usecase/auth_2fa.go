@@ -5,7 +5,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"math/big"
 	"strings"
 	"time"
 
@@ -53,11 +52,20 @@ func (uc *authUsecase) Generate2FASecret(userID uuid.UUID) (*domain.Enable2FARes
 }
 
 func generateRecoveryCodes() ([]string, string) {
-	codes := make([]string, 8)
-	for i := 0; i < 8; i++ {
-		c1, _ := rand.Int(rand.Reader, big.NewInt(9000))
-		c2, _ := rand.Int(rand.Reader, big.NewInt(9000))
-		codes[i] = fmt.Sprintf("%04d-%04d", c1.Int64()+1000, c2.Int64()+1000)
+	codes := make([]string, 16)
+	const hexChars = "0123456789abcdef"
+	for i := 0; i < 16; i++ {
+		b1 := make([]byte, 5)
+		rand.Read(b1)
+		b2 := make([]byte, 5)
+		rand.Read(b2)
+		part1 := make([]byte, 5)
+		part2 := make([]byte, 5)
+		for j := 0; j < 5; j++ {
+			part1[j] = hexChars[int(b1[j])%len(hexChars)]
+			part2[j] = hexChars[int(b2[j])%len(hexChars)]
+		}
+		codes[i] = fmt.Sprintf("%s-%s", string(part1), string(part2))
 	}
 	return codes, strings.Join(codes, ",")
 }
@@ -143,23 +151,8 @@ func (uc *authUsecase) Disable2FA(userID uuid.UUID, req domain.Disable2FARequest
 
 	verified := false
 
-	// Method 1: Email OTP
-	if req.EmailOTP != "" {
-		uc.otpMu.Lock()
-		entry, exists := uc.emailOTPs[userID]
-		if exists && entry.code == req.EmailOTP && time.Now().Before(entry.expiresAt) {
-			verified = true
-			delete(uc.emailOTPs, userID)
-		}
-		uc.otpMu.Unlock()
-
-		if !verified {
-			return errors.New("kode OTP email salah atau sudah kadaluarsa")
-		}
-	}
-
-	// Method 2: Recovery Code
-	if !verified && req.RecoveryCode != "" {
+	// Method 1: Recovery Code (xxxxx-xxxxx)
+	if req.RecoveryCode != "" {
 		if user.TwoFactorRecoveryCodes != nil {
 			encBytes, err := hex.DecodeString(*user.TwoFactorRecoveryCodes)
 			if err == nil {
@@ -181,7 +174,7 @@ func (uc *authUsecase) Disable2FA(userID uuid.UUID, req domain.Disable2FARequest
 		}
 	}
 
-	// Method 3: 6-Digit TOTP Code (Standard)
+	// Method 2: 6-Digit TOTP Code (Standard)
 	if !verified && req.Code != "" {
 		if user.TwoFactorSecret == nil {
 			return errors.New("2FA secret missing")
@@ -206,7 +199,7 @@ func (uc *authUsecase) Disable2FA(userID uuid.UUID, req domain.Disable2FARequest
 	}
 
 	if !verified {
-		return errors.New("silakan masukkan Kode OTP Authenticator, Kode Pemulihan, atau Kode Email OTP")
+		return errors.New("silakan masukkan Kode OTP Authenticator atau Kode Pemulihan (Recovery Code)")
 	}
 
 	if err := uc.userRepo.Update2FAWithRecoveryCodes(userID, nil, nil, false); err != nil {
